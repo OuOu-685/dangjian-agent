@@ -1,0 +1,165 @@
+{
+  "name": "WF-08-4 wf_job_search 岗位与校友资源检索",
+  "space_id": "0",
+  "workflow_id": "0",
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {
+          "name": "in_major",
+          "type": "string",
+          "required": true,
+          "description": "专业名称，须与档案里的写法完全一致"
+        },
+        {
+          "name": "in_school",
+          "type": "string",
+          "required": true,
+          "description": "院校名称"
+        },
+        {
+          "name": "in_resource_type",
+          "type": "string",
+          "required": true,
+          "description": "校园招聘 / 双选会 / 校友资源"
+        },
+        {
+          "name": "in_job_keyword",
+          "type": "string",
+          "required": false,
+          "description": "关键词（可选，只在代码里过滤，不进查询条件）"
+        },
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true,
+          "description": "当前时间戳（秒）"
+        }
+      ]
+    },
+    {
+      "id": "100002",
+      "type": "查询数据",
+      "title": "查专业精确",
+      "description": "【待配置】目标表：job_posting。条件：major = in_major AND resource_type = in_resource_type。字段：job_id / job_name / org_name / channel / major / resource_type / job_desc / apply_deadline_ts / apply_deadline_label / data_source。limit 建议 10。",
+      "outputs": [
+        {
+          "name": "q_job_primary",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "100003",
+      "type": "查询数据",
+      "title": "查通用兜底",
+      "description": "【待配置】目标表：job_posting。条件：major = '通用'（字面量） AND resource_type = in_resource_type。★ 兜底行必须真的存在，否则回退逻辑等于没写。",
+      "outputs": [
+        {
+          "name": "q_job_fallback",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "100004",
+      "type": "代码",
+      "title": "资源选级",
+      "description": "两级回退选级 + 关键词过滤 + 话术组装。全部落空时明确说不知道，不编资源。",
+      "inputs": {
+        "q_job_primary": "100002.q_job_primary",
+        "q_job_fallback": "100003.q_job_fallback",
+        "in_major": "100001.in_major",
+        "in_resource_type": "100001.in_resource_type",
+        "in_job_keyword": "100001.in_job_keyword"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    q1 = p.get('q_job_primary') or []\n    q2 = p.get('q_job_fallback') or []\n    keyword = str(p.get('in_job_keyword') or '').strip()\n    major = str(p.get('in_major') or '')\n    rtype = str(p.get('in_resource_type') or '')\n\n    q1 = [r for r in q1 if isinstance(r, dict)]\n    q2 = [r for r in q2 if isinstance(r, dict)]\n\n    if q1:\n        rows, source = q1, '专业精确'\n    elif q2:\n        rows, source = q2, '通用兜底'\n    else:\n        rows, source = [], '未查到'\n\n    # 关键词只在代码里过滤，不参与数据库查询条件（可选参数进 AND 条件会静默失效）\n    if keyword:\n        hit = []\n        for r in rows:\n            blob = str(r.get('job_name', '')) + str(r.get('job_desc', '')) + str(r.get('channel', ''))\n            if keyword in blob:\n                hit.append(r)\n        if hit:\n            rows = hit\n\n    found = len(rows) > 0\n    lines = []\n    for i, r in enumerate(rows[:10]):\n        lines.append('%d. %s｜%s｜渠道：%s' % (\n            i + 1,\n            str(r.get('job_name', '')),\n            str(r.get('org_name', '')),\n            str(r.get('channel', '')),\n        ))\n\n    if not found:\n        message = ('暂时没查到「%s」方向的%s资源。'\n                   '可以让我用通用渠道给你建议，或把需求发给就业中心补充。') % (major, rtype)\n    else:\n        message = ('为你找到 %d 条%s资源（匹配层级：%s）：\\n%s') % (\n            len(rows), rtype, source, '\\n'.join(lines))\n\n    ret: Output = {\n        'v_job_list': rows,\n        'v_job_source': source,\n        'v_job_found': found,\n        'v_job_count': len(rows),\n        'v_out_message': message,\n        'v_out_status': 'checked',\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_job_list",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_job_source",
+          "type": "string"
+        },
+        {
+          "name": "v_job_found",
+          "type": "boolean"
+        },
+        {
+          "name": "v_job_count",
+          "type": "integer"
+        },
+        {
+          "name": "v_out_message",
+          "type": "string"
+        },
+        {
+          "name": "v_out_status",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100005",
+      "type": "新增数据",
+      "title": "写服务日志",
+      "description": "【待配置】目标表：career_service_log。字段映射：\nuser_id←上游传入 | scene←'岗位' | action←'资源检索' | resource_type←in_resource_type | result_count←v_job_count | is_violation←'N' | reply_text←v_out_message | week_label←上游按 in_now_ts 算出的周标签 | created_at←in_now_ts"
+    },
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_message": "100004.v_out_message",
+        "out_job_list": "100004.v_job_list",
+        "out_job_source": "100004.v_job_source",
+        "out_job_found": "100004.v_job_found",
+        "out_job_count": "100004.v_job_count",
+        "out_status": "100004.v_out_status"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "100001",
+      "100002"
+    ],
+    [
+      "100002",
+      "100003"
+    ],
+    [
+      "100003",
+      "100004"
+    ],
+    [
+      "100004",
+      "100005"
+    ],
+    [
+      "100005",
+      "900001"
+    ]
+  ]
+}

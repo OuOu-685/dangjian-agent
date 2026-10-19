@@ -1,0 +1,489 @@
+{
+  "name": "WF-08-3 wf_mock_interview 结构化模拟面试与复盘",
+  "space_id": "0",
+  "workflow_id": "0",
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {
+          "name": "in_user_id",
+          "type": "string",
+          "required": true,
+          "description": "用户标识"
+        },
+        {
+          "name": "in_action",
+          "type": "string",
+          "required": true,
+          "description": "出题 / 复盘"
+        },
+        {
+          "name": "in_answer_text",
+          "type": "string",
+          "required": false,
+          "description": "复盘时的作答内容（可选，复盘时必填；不参与任何查询条件）"
+        },
+        {
+          "name": "in_session_id",
+          "type": "string",
+          "required": false,
+          "description": "场次 ID（可选，仅用于记录）"
+        },
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true,
+          "description": "当前时间戳（秒）"
+        }
+      ]
+    },
+    {
+      "id": "100002",
+      "type": "查询数据",
+      "title": "查询求职档案",
+      "description": "【待配置】目标表：career_profile。条件：user_id = in_user_id（EQUAL）。limit 1。字段：user_id / school / grade / major / ability_tags / interest_tags / job_goal。\n★ 不要拿 in_session_id、in_answer_text 之类的可选参数当查询条件 —— 不填会变成 = ''，整条查询恒为空。",
+      "outputs": [
+        {
+          "name": "q_profile",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": [
+              {
+                "type": "string",
+                "name": "user_id"
+              },
+              {
+                "type": "string",
+                "name": "school"
+              },
+              {
+                "type": "string",
+                "name": "grade"
+              },
+              {
+                "type": "string",
+                "name": "major"
+              },
+              {
+                "type": "string",
+                "name": "ability_tags"
+              },
+              {
+                "type": "string",
+                "name": "interest_tags"
+              },
+              {
+                "type": "string",
+                "name": "job_goal"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "100003",
+      "type": "代码",
+      "title": "分流判定",
+      "description": "校验类状态在分支之前算全；同时定出本次走「出题」还是「复盘」。",
+      "inputs": {
+        "q_profile": "100002.q_profile",
+        "in_action": "100001.in_action",
+        "in_answer_text": "100001.in_answer_text"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    q = p.get('q_profile') or []\n    prof = q[0] if q and isinstance(q[0], dict) else {}\n    goal = str(prof.get('job_goal') or '').strip()\n    answer = str(p.get('in_answer_text') or '').strip()\n    act = str(p.get('in_action') or '').strip()\n\n    if act in ('复盘', '评分', '打分', 'review'):\n        action = '复盘'\n    else:\n        action = '出题'\n\n    if not prof:\n        status = 'not_registered'\n        tip = '我还没有你的求职档案。先建档（学校、专业、目标岗位、能力标签），再开始模拟面试。'\n    elif not goal:\n        status = 'need_more_info'\n        tip = '档案里还缺「目标岗位」，模拟面试要有目标岗位才能出对口题。'\n    elif action == '复盘' and len(answer) < 20:\n        status = 'need_more_info'\n        tip = '复盘需要你的作答内容。把刚才的回答（或文字稿）贴给我，我按 STAR 结构逐项打分并给参考说法。'\n    else:\n        status = 'checked'\n        tip = ''\n\n    ret: Output = {\n        'v_ok': 'Y' if status == 'checked' else 'N',\n        'v_status': status,\n        'v_action': action,\n        'v_tip': tip,\n        'v_goal': goal,\n        'v_major': str(prof.get('major') or ''),\n        'v_ability': str(prof.get('ability_tags') or ''),\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_ok",
+          "type": "string"
+        },
+        {
+          "name": "v_status",
+          "type": "string"
+        },
+        {
+          "name": "v_action",
+          "type": "string"
+        },
+        {
+          "name": "v_tip",
+          "type": "string"
+        },
+        {
+          "name": "v_goal",
+          "type": "string"
+        },
+        {
+          "name": "v_major",
+          "type": "string"
+        },
+        {
+          "name": "v_ability",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100004",
+      "type": "选择器",
+      "title": "材料是否够用",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_ok",
+              "right": "Y"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100005",
+      "type": "知识库",
+      "title": "检索面试方法论",
+      "description": "【待配置】知识库：结构化面试评分维度、STAR 法则、常见岗位行为面题库、反问环节清单。禁放候选人的真实面试记录。",
+      "datasets": [],
+      "top_k": 5,
+      "min_score": 0.5,
+      "inputs": {
+        "Query": "100003.v_goal"
+      },
+      "outputs": [
+        {
+          "name": "k_method",
+          "type": "list",
+          "items": "string"
+        }
+      ]
+    },
+    {
+      "id": "100006",
+      "type": "选择器",
+      "title": "出题还是复盘",
+      "description": "分支用来分流「做不同的事」，不用来分流「说不同的话」。",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_action",
+              "right": "出题"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100007",
+      "type": "大模型",
+      "title": "生成面试题单",
+      "model": "豆包·2.0·pro",
+      "inputs": {
+        "v_goal": "100003.v_goal",
+        "v_major": "100003.v_major",
+        "v_ability": "100003.v_ability",
+        "k_method": "100005.k_method"
+      },
+      "llm_param": {
+        "temperature": 0.5
+      },
+      "prompt": "目标岗位：{{v_goal}}；专业：{{v_major}}；能力标签：{{v_ability}}",
+      "system_prompt": "你是「就业与生涯规划助手」的模拟面试模块，服务学生、就业中心与校友。\n\n【可用方法论】\n{{k_method}}\n\n【任务】围绕目标岗位生成一份结构化模拟面试题单（5~7 题）。\n\n【题目配比】自我介绍 1 题、专业/技能深挖 2 题、行为面（STAR）2 题、岗位理解与动机 1 题、反问环节 1 题。\n\n【硬性要求】\n1. 只输出一个 JSON 对象，含两个键：llm_questions_json（数组）、llm_plan（作答提示字符串）。\n2. llm_questions_json 每项字段固定：type（题型）、question（题干原文）、focus（面试官观察点）。\n3. llm_plan 用 2~3 句话说明作答顺序与时间分配建议。\n4. 不要输出任何与岗位无关的隐私问题（婚育、年龄、户籍、家庭状况等一律不出）。\n5. 不要 Markdown 代码块围栏，不要任何额外解释。\n\n【输出示例】\n{\"llm_questions_json\":[{\"type\":\"自我介绍\",\"question\":\"请用 2 分钟介绍你自己。\",\"focus\":\"是否扣住岗位要求，而不是复述简历时间线。\"}],\"llm_plan\":\"先答自我介绍与技能题，行为面每题控制在 90 秒以内。\"}",
+      "outputs": [
+        {
+          "name": "llm_questions_json",
+          "type": "string"
+        },
+        {
+          "name": "llm_plan",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100008",
+      "type": "代码",
+      "title": "题单规整",
+      "inputs": {
+        "llm_questions_json": "100007.llm_questions_json",
+        "llm_plan": "100007.llm_plan"
+      },
+      "code": "import json\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    raw = p.get('llm_questions_json')\n    data = []\n    if isinstance(raw, list):\n        data = raw\n    elif isinstance(raw, str) and raw.strip():\n        try:\n            data = json.loads(raw)\n        except Exception:\n            data = []\n    if not isinstance(data, list):\n        data = []\n    qs = [q for q in data if isinstance(q, dict)]\n\n    plan = str(p.get('llm_plan') or '')\n    lines = ['本次模拟面试共 %d 题，建议按顺序作答：' % len(qs)]\n    for i, q in enumerate(qs[:10]):\n        lines.append('%d. 【%s】%s' % (i + 1, str(q.get('type') or ''), str(q.get('question') or '')))\n        focus = str(q.get('focus') or '')\n        if focus:\n            lines.append('   观察点：' + focus)\n    if plan:\n        lines.append('')\n        lines.append('作答提示：' + plan)\n\n    ret: Output = {\n        'v_reply': '\\n'.join(lines),\n        'v_questions': qs,\n        'v_review': [],\n        'v_avg_score': 0,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_reply",
+          "type": "string"
+        },
+        {
+          "name": "v_questions",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_review",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_avg_score",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100009",
+      "type": "大模型",
+      "title": "复盘打分",
+      "model": "豆包·2.0·pro",
+      "inputs": {
+        "v_goal": "100003.v_goal",
+        "k_method": "100005.k_method",
+        "in_answer_text": "100001.in_answer_text"
+      },
+      "llm_param": {
+        "temperature": 0.2
+      },
+      "prompt": "目标岗位：{{v_goal}}\\n\\n【我的作答】\\n{{in_answer_text}}",
+      "system_prompt": "你是「就业与生涯规划助手」的面试复盘模块。\n\n【评分维度】\n{{k_method}}\n\n【任务】对学生的作答逐处打分并给复盘。\n\n【输出格式】只输出一个 JSON 对象：\n1. llm_scores_json：数组，每项 {\\\"type\\\":题型, \\\"score\\\":0~100 整数, \\\"good\\\":亮点, \\\"bad\\\":待改进（要具体，指出缺哪一步）, \\\"better\\\":一段可直接照说的参考说法}。\n2. llm_review：80 字以内的总体点评 + 下一步最该练的 1 件事。\n\n【评分纪律】同一份作答重复评两次，分数必须一致。评分只看作答内容本身，不看性别、年龄、地域、口音等无关因素。\n\n【红线】「参考说法」只能用学生作答里已经出现过的事实来重组，**不得替他新增经历、编造数据或证书**。\n\n不要 Markdown 代码块围栏，不要额外解释。",
+      "outputs": [
+        {
+          "name": "llm_scores_json",
+          "type": "string"
+        },
+        {
+          "name": "llm_review",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100010",
+      "type": "代码",
+      "title": "复盘规整",
+      "inputs": {
+        "llm_scores_json": "100009.llm_scores_json",
+        "llm_review": "100009.llm_review"
+      },
+      "code": "import json\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    raw = p.get('llm_scores_json')\n    data = []\n    if isinstance(raw, list):\n        data = raw\n    elif isinstance(raw, str) and raw.strip():\n        try:\n            data = json.loads(raw)\n        except Exception:\n            data = []\n    if not isinstance(data, list):\n        data = []\n    rs = [r for r in data if isinstance(r, dict)]\n\n    total = 0\n    n = 0\n    lines = []\n    for i, r in enumerate(rs[:10]):\n        try:\n            sc = int(float(r.get('score') or 0))\n        except Exception:\n            sc = 0\n        sc = max(0, min(100, sc))\n        total += sc\n        n += 1\n        lines.append('%d. 【%s】得分 %d' % (i + 1, str(r.get('type') or ''), sc))\n        lines.append('   亮点：' + str(r.get('good') or ''))\n        lines.append('   待改进：' + str(r.get('bad') or ''))\n        lines.append('   参考说法：' + str(r.get('better') or ''))\n\n    avg = int(total / n) if n else 0\n    review = str(p.get('llm_review') or '')\n    head = ('本次复盘：平均得分 %d 分（共 %d 处作答）' % (avg, n)) if n else '本次复盘：'\n    body = ('\\n' + '\\n'.join(lines)) if lines else ''\n    tail = ('\\n\\n总体点评：' + review) if review else ''\n\n    ret: Output = {\n        'v_reply': head + body + tail,\n        'v_questions': [],\n        'v_review': rs,\n        'v_avg_score': avg,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_reply",
+          "type": "string"
+        },
+        {
+          "name": "v_questions",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_review",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_avg_score",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100012",
+      "type": "代码",
+      "title": "材料不足占位",
+      "inputs": {
+        "v_tip": "100003.v_tip"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    tip = str(p.get('v_tip') or '信息还不足，暂时无法开始模拟面试。')\n    ret: Output = {\n        'v_reply': tip,\n        'v_questions': [],\n        'v_review': [],\n        'v_avg_score': 0,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_reply",
+          "type": "string"
+        },
+        {
+          "name": "v_questions",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_review",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_avg_score",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100011",
+      "type": "变量聚合",
+      "title": "结果聚合",
+      "description": "三路（出题 / 复盘 / 占位）收口为同名变量；每条分支产出的都是同类东西。",
+      "merge_groups": [
+        {
+          "name": "Group1",
+          "variables": [
+            "100008.v_reply",
+            "100010.v_reply",
+            "100012.v_reply"
+          ]
+        },
+        {
+          "name": "Group2",
+          "variables": [
+            "100008.v_questions",
+            "100010.v_questions",
+            "100012.v_questions"
+          ]
+        },
+        {
+          "name": "Group3",
+          "variables": [
+            "100008.v_review",
+            "100010.v_review",
+            "100012.v_review"
+          ]
+        },
+        {
+          "name": "Group4",
+          "variables": [
+            "100008.v_avg_score",
+            "100010.v_avg_score",
+            "100012.v_avg_score"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100013",
+      "type": "新增数据",
+      "title": "写面试记录",
+      "description": "【待配置】目标表：career_interview_log。字段映射：user_id←in_user_id | session_id←in_session_id | action←v_action | job_goal←v_goal | avg_score←Group4 | questions_json←Group2 | review_json←Group3 | week_label←上游周标签 | created_at←in_now_ts\n★ 该表是业务明细表，不要混进服务日志，否则统计口径的分母会被稀释。"
+    },
+    {
+      "id": "100014",
+      "type": "新增数据",
+      "title": "写服务日志",
+      "description": "【待配置】目标表：career_service_log。字段映射：user_id←in_user_id | scene←'面试' | action←v_action | result_count←Group4 | is_violation←'N' | reply_text←Group1 | week_label←上游周标签 | created_at←in_now_ts"
+    },
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_message": "100011.Group1",
+        "out_questions": "100011.Group2",
+        "out_review": "100011.Group3",
+        "out_avg_score": "100011.Group4",
+        "out_status": "100003.v_status"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "100001",
+      "100002"
+    ],
+    [
+      "100002",
+      "100003"
+    ],
+    [
+      "100003",
+      "100004"
+    ],
+    [
+      "100004",
+      "100005",
+      "true"
+    ],
+    [
+      "100004",
+      "100012",
+      "false"
+    ],
+    [
+      "100005",
+      "100006"
+    ],
+    [
+      "100006",
+      "100007",
+      "true"
+    ],
+    [
+      "100006",
+      "100009",
+      "false"
+    ],
+    [
+      "100007",
+      "100008"
+    ],
+    [
+      "100008",
+      "100011"
+    ],
+    [
+      "100009",
+      "100010"
+    ],
+    [
+      "100010",
+      "100011"
+    ],
+    [
+      "100012",
+      "100011"
+    ],
+    [
+      "100011",
+      "100013"
+    ],
+    [
+      "100013",
+      "100014"
+    ],
+    [
+      "100014",
+      "900001"
+    ]
+  ]
+}

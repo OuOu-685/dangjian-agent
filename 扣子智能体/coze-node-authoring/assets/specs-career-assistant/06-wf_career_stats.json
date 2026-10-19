@@ -1,0 +1,203 @@
+{
+  "name": "WF-08-5 wf_career_stats 求职活跃度与服务效果统计",
+  "space_id": "0",
+  "workflow_id": "0",
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true,
+          "description": "当前时间戳（秒）；定时触发时由时间插件提供"
+        },
+        {
+          "name": "in_stat_type",
+          "type": "string",
+          "required": true,
+          "description": "统计类型，固定 weekly"
+        }
+      ]
+    },
+    {
+      "id": "100002",
+      "type": "代码",
+      "title": "计算统计窗口",
+      "description": "算出本期的 week_label。★ 用 week_label 做等值查询，是因为查询节点的操作符目前只有 EQUAL 经过实测（大于/小于的枚举值未证实）。",
+      "inputs": {
+        "in_now_ts": "100001.in_now_ts"
+      },
+      "code": "import datetime\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    try:\n        now = int(p.get('in_now_ts') or 0)\n    except Exception:\n        now = 0\n    if now <= 0:\n        now = int(datetime.datetime.now().timestamp())\n\n    d = datetime.datetime.fromtimestamp(now)\n    iso = d.isocalendar()\n    week_label = '%d-W%02d' % (int(iso[0]), int(iso[1]))\n    day0 = d.replace(hour=0, minute=0, second=0, microsecond=0)\n    start_ts = int(day0.timestamp()) - 7 * 86400\n\n    ret: Output = {\n        'v_week_label': week_label,\n        'v_start_ts': start_ts,\n        'v_end_ts': now,\n        'v_window_note': '统计窗口：%s 起至 %s（周标签 %s）' % (\n            datetime.datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d'),\n            d.strftime('%Y-%m-%d'), week_label),\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_week_label",
+          "type": "string"
+        },
+        {
+          "name": "v_start_ts",
+          "type": "integer"
+        },
+        {
+          "name": "v_end_ts",
+          "type": "integer"
+        },
+        {
+          "name": "v_window_note",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100003",
+      "type": "查询数据",
+      "title": "查服务日志",
+      "description": "【待配置】目标表：career_service_log。条件：week_label = v_week_label（EQUAL）。字段：user_id / scene / action / is_violation / reject_type / result_count / reply_text / week_label / created_at。limit 建议 500（本期数据量上限）。",
+      "outputs": [
+        {
+          "name": "q_service",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "100004",
+      "type": "查询数据",
+      "title": "查简历诊断",
+      "description": "【待配置】目标表：career_resume_log。条件：week_label = v_week_label。字段：user_id / match_score / match_level / week_label / created_at。",
+      "outputs": [
+        {
+          "name": "q_resume",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "100005",
+      "type": "查询数据",
+      "title": "查模拟面试",
+      "description": "【待配置】目标表：career_interview_log。条件：week_label = v_week_label。字段：user_id / action / avg_score / week_label / created_at。",
+      "outputs": [
+        {
+          "name": "q_interview",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        }
+      ]
+    },
+    {
+      "id": "100006",
+      "type": "代码",
+      "title": "汇总统计",
+      "description": "所有计算在代码节点完成，结束节点只负责把结果抛出去（结束节点不能做计算）。",
+      "inputs": {
+        "q_service": "100003.q_service",
+        "q_resume": "100004.q_resume",
+        "q_interview": "100005.q_interview",
+        "v_week_label": "100002.v_week_label"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    svc = [x for x in (p.get('q_service') or []) if isinstance(x, dict)]\n    res = [x for x in (p.get('q_resume') or []) if isinstance(x, dict)]\n    itv = [x for x in (p.get('q_interview') or []) if isinstance(x, dict)]\n    week = str(p.get('v_week_label') or '')\n\n    total = len(svc)\n    blocked = 0\n    users = set()\n    scene_counter = {}\n    for x in svc:\n        if str(x.get('is_violation') or 'N') == 'Y':\n            blocked += 1\n        u = str(x.get('user_id') or '').strip()\n        if u:\n            users.add(u)\n        sc = str(x.get('scene') or '未标注')\n        scene_counter[sc] = scene_counter.get(sc, 0) + 1\n\n    rate = round(blocked * 100.0 / total, 2) if total else 0.0\n\n    scene_lines = []\n    for k in sorted(scene_counter.keys(), key=lambda x: -scene_counter[x]):\n        scene_lines.append('%s %d 次' % (k, scene_counter[k]))\n\n    report = (\n        '【求职活跃度与服务效果·%s】\\n'\n        '· 服务请求 %d 次，活跃用户 %d 人\\n'\n        '· 合规拦截 %d 次，拦截率 %.2f%%\\n'\n        '· 简历诊断 %d 份，模拟面试 %d 场\\n'\n        '· 场景分布：%s\\n'\n        '· 口径说明：活跃度 = career_service_log 中 week_label=%s 的去重用户数；'\n        '拦截率 = is_violation=Y 的行数 ÷ 总行数。业务明细表（简历 / 面试）不参与该分母。'\n    ) % (week, total, len(users), blocked, rate, len(res), len(itv),\n         '；'.join(scene_lines) if scene_lines else '无', week)\n\n    ret: Output = {\n        'v_total': total,\n        'v_active_users': len(users),\n        'v_blocked': blocked,\n        'v_block_rate': rate,\n        'v_resume_count': len(res),\n        'v_interview_count': len(itv),\n        'v_report': report,\n        'v_week_label': week,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_total",
+          "type": "integer"
+        },
+        {
+          "name": "v_active_users",
+          "type": "integer"
+        },
+        {
+          "name": "v_blocked",
+          "type": "integer"
+        },
+        {
+          "name": "v_block_rate",
+          "type": "float"
+        },
+        {
+          "name": "v_resume_count",
+          "type": "integer"
+        },
+        {
+          "name": "v_interview_count",
+          "type": "integer"
+        },
+        {
+          "name": "v_report",
+          "type": "string"
+        },
+        {
+          "name": "v_week_label",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100007",
+      "type": "新增数据",
+      "title": "写统计快照",
+      "description": "【待配置】目标表：career_stat_snapshot。字段映射：\nweek_label←v_week_label | total_requests←v_total | active_users←v_active_users | blocked_count←v_blocked | block_rate←v_block_rate | resume_count←v_resume_count | interview_count←v_interview_count | report_text←v_report | created_at←in_now_ts\n★ 每次跑都新增一行（流水），方便看趋势；不要用更新数据覆盖上一期。"
+    },
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_report": "100006.v_report",
+        "out_total": "100006.v_total",
+        "out_active_users": "100006.v_active_users",
+        "out_blocked": "100006.v_blocked",
+        "out_block_rate": "100006.v_block_rate",
+        "out_week_label": "100006.v_week_label",
+        "out_status": "100001.in_stat_type"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "100001",
+      "100002"
+    ],
+    [
+      "100002",
+      "100003"
+    ],
+    [
+      "100003",
+      "100004"
+    ],
+    [
+      "100004",
+      "100005"
+    ],
+    [
+      "100005",
+      "100006"
+    ],
+    [
+      "100006",
+      "100007"
+    ],
+    [
+      "100007",
+      "900001"
+    ]
+  ]
+}

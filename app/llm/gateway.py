@@ -1,0 +1,240 @@
+"""数据级别出网闸门
+
+根据数据级别拦截敏感数据调用外部模型，确保数据安全。
+"""
+
+from functools import lru_cache
+from typing import Optional
+from urllib.parse import urlsplit
+
+import structlog
+
+from app.core.config import settings, tenant_config
+from app.core.tenant import get_tenant_id
+from app.llm.base import DataLevel, DeploymentType, ModelConfig
+
+logger = structlog.get_logger(__name__)
+
+
+class GatewayError(Exception):
+    """闸门错误"""
+
+    pass
+
+
+class DataLevelGateway:
+    """数据级别出网闸门
+
+    核心安全机制：
+    1. 敏感及以上级别禁止使用外部模型
+    2. 涉密数据直接拒绝处理
+    3. 所有出网请求记录审计日志
+    """
+
+    def __init__(self) -> None:
+        """初始化闸门"""
+        self.enabled = settings.ENABLE_DATA_LEVEL_GATEWAY
+        self.allowed_external_domains = set(settings.ALLOWED_EXTERNAL_MODELS)
+        logger.info(
+            "gateway_initialized",
+            enabled=self.enabled,
+            allowed_domains=list(self.allowed_external_domains),
+        )
+
+    def check_access(
+        self, data_level: DataLevel, model_config: ModelConfig, context: Optional[dict] = None
+    ) -> tuple[bool, Optional[str]]:
+        """检查是否允许访问
+
+        Args:
+            data_level: 数据级别
+            model_config: 模型配置
+            context: 上下文信息（用于审计）
+
+        Returns:
+            (是否允许, 拒绝原因)
+        """
+        # 上下文只用于安全事件元信息，不能记录人员正文。
+        context = {
+            key: value
+            for key, value in (context or {}).items()
+            if key in {"request_id", "tenant_id", "user_id", "task_type"}
+        }
+        tenant_id = get_tenant_id()
+        if data_level == DataLevel.CLASSIFIED:
+            return False, "涉密数据禁止进行AI处理"
+        if (
+            data_level == DataLevel.SENSITIVE
+            and model_config.deployment_type == DeploymentType.EXTERNAL
+        ):
+            return False, "敏感数据禁止使用外部模型"
+        school_id = tenant_config.school_id(tenant_id) if tenant_id else None
+        policy_id = school_id or tenant_id
+        policy = tenant_config.local(policy_id, "model_policy", {}) if policy_id else {}
+        if settings.ENV == "production":
+            approved = (
+                school_id
+                and all(
+                    tenant_config.local(school_id, key, {}).get("status") == "confirmed"
+                    for key in (
+                        "registration",
+                        "organization_approval",
+                        "it_approval",
+                        "secrecy_approval",
+                    )
+                )
+                and tenant_config.local(school_id, "pilot_scope", "")
+            )
+            if not approved:
+                return False, "学校登记、三方确认或试点范围尚未完成"
+        if settings.ENV == "production" and model_config.deployment_type == DeploymentType.LOCAL:
+            endpoint = urlsplit(model_config.endpoint or "")
+            if not (policy.get("local_sensitive_enabled") is True and policy.get("evidence")):
+                return False, "学校尚未批准校内模型"
+            if model_config.endpoint and not (
+                endpoint.scheme == "https"
+                and not endpoint.username
+                and not endpoint.password
+                and not endpoint.fragment
+                and (endpoint.hostname or "").lower().rstrip(".") in policy.get("local_hosts", [])
+                and (endpoint.hostname or "").lower().rstrip(".")
+                in settings.ALLOWED_LOCAL_MODEL_HOSTS
+            ):
+                return False, "校内模型连接必须TLS并在批准主机范围内"
+
+        if model_config.deployment_type == DeploymentType.EXTERNAL:
+            if not self._is_allowed_external(model_config):
+                return False, "外部模型主机不在白名单中"
+            if settings.ENV == "production" or policy:
+                host = (urlsplit(model_config.endpoint or "").hostname or "").lower().rstrip(".")
+                if not (
+                    policy.get("external_enabled") is True
+                    and policy.get("evidence")
+                    and host in policy.get("allowed_hosts", [])
+                ):
+                    return False, "学校尚未确认该模型出网范围"
+                if data_level == DataLevel.INTERNAL and policy.get("internal_approved") is not True:
+                    return False, "学校尚未确认内部资料模型出网"
+        if (
+            data_level == DataLevel.SENSITIVE
+            and model_config.deployment_type == DeploymentType.LOCAL
+        ):
+            if settings.ENV == "production" or policy:
+                host = (urlsplit(model_config.endpoint or "").hostname or "").lower().rstrip(".")
+                if not (
+                    policy.get("local_sensitive_enabled") is True
+                    and policy.get("evidence")
+                    and host in policy.get("local_hosts", [])
+                    and host in settings.ALLOWED_LOCAL_MODEL_HOSTS
+                ):
+                    return False, "敏感分析仅可使用学校批准的校内服务或人工路径"
+        # 开关不能取消数据政策。保留属性兼容旧配置，安全边界始终生效。
+        if not self.enabled:
+            logger.warning("gateway_disable_ignored", data_level=data_level)
+
+        # 公开数据：允许所有模型
+        # 记录审计日志
+        logger.info(
+            "gateway_allowed",
+            data_level=data_level,
+            model_id=model_config.model_id,
+            deployment_type=model_config.deployment_type,
+            provider=model_config.provider,
+            context=context,
+        )
+
+        return True, None
+
+    def _is_allowed_external(self, model_config: ModelConfig) -> bool:
+        """检查外部模型是否在白名单中
+
+        Args:
+            model_config: 模型配置
+
+        Returns:
+            是否允许
+        """
+        # 如果白名单为空，拒绝所有外部模型
+        if not self.allowed_external_domains:
+            return False
+
+        allowed = {item.lower().rstrip(".") for item in self.allowed_external_domains}
+        # 只匹配解析后的完整主机名，路径或相似域名不能获得授权。
+        if model_config.endpoint:
+            endpoint = urlsplit(model_config.endpoint)
+            return (
+                endpoint.scheme == "https"
+                and not endpoint.username
+                and not endpoint.password
+                and not endpoint.fragment
+                and (endpoint.hostname or "").lower().rstrip(".") in allowed
+            )
+        return False
+
+    def validate_and_block(
+        self, data_level: DataLevel, model_config: ModelConfig, context: Optional[dict] = None
+    ) -> None:
+        """验证并在不通过时抛出异常
+
+        Args:
+            data_level: 数据级别
+            model_config: 模型配置
+            context: 上下文信息
+
+        Raises:
+            GatewayError: 如果不允许访问
+        """
+        allowed, reason = self.check_access(data_level, model_config, context)
+
+        if not allowed:
+            # 记录安全事件
+            logger.error(
+                "gateway_violation",
+                data_level=data_level,
+                model_id=model_config.model_id,
+                provider=model_config.provider,
+                deployment_type=model_config.deployment_type,
+                reason=reason,
+                context={
+                    key: value
+                    for key, value in (context or {}).items()
+                    if key in {"request_id", "tenant_id", "user_id", "task_type"}
+                },
+            )
+            raise GatewayError(reason)
+
+    def add_allowed_domain(self, domain: str) -> None:
+        """添加允许的外部域名
+
+        Args:
+            domain: 域名
+        """
+        self.allowed_external_domains.add(domain)
+        logger.info("gateway_domain_added", domain=domain)
+
+    def remove_allowed_domain(self, domain: str) -> None:
+        """移除允许的外部域名
+
+        Args:
+            domain: 域名
+        """
+        self.allowed_external_domains.discard(domain)
+        logger.info("gateway_domain_removed", domain=domain)
+
+    def get_allowed_domains(self) -> list[str]:
+        """获取允许的外部域名列表
+
+        Returns:
+            域名列表
+        """
+        return list(self.allowed_external_domains)
+
+
+@lru_cache
+def get_gateway() -> DataLevelGateway:
+    """获取闸门单例
+
+    Returns:
+        闸门实例
+    """
+    return DataLevelGateway()

@@ -1,0 +1,245 @@
+# 业务规则配置
+
+# 党员发展阶段时限（天）
+member_development:
+  # 入党积极分子培养期
+  activist_training_days: 365
+  activist_training_min_days: 365
+
+  # 发展对象培训期
+  candidate_training_days: 90
+
+  # 预备党员预备期
+  probationary_period_days: 365
+  probationary_period_min_days: 365
+
+  # 提醒提前量（天）
+  reminder_advance_days: 30
+
+# 材料要求配置
+material_requirements:
+  # 入党申请人 -> 入党积极分子
+  applicant_to_activist:
+    - 入党申请书
+    - 党组织谈话记录
+
+  # 入党积极分子 -> 发展对象
+  activist_to_candidate:
+    - 思想汇报
+    - 培养考察记录
+    - 群众评议材料
+    - 党课培训证明
+
+  # 发展对象 -> 预备党员
+  candidate_to_probationary:
+    - 政治审查材料
+    - 公示情况报告
+    - 支部大会决议
+    - 上级审批意见
+
+  # 预备党员 -> 正式党员
+  probationary_to_member:
+    - 转正申请书
+    - 预备期考察记录
+    - 支部大会决议
+
+# 党员组织关系接转（T-MEM-14，模块2 延伸）
+# 依据《中国共产党党员教育管理工作条例》第五章"党员组织关系管理"：党员组织关系介绍信
+# 是党员政治身份的证明，转移组织关系须办理转入 / 转出。介绍信有效期按上级党组织规定
+# 填写，系统只提供默认天数与到期提示，不代替上级规定、也不自动认定"已接收"。
+member_transfer:
+  # 介绍信有效期默认天数（学校可按上级规定调整；到期只提示核实，不阻断登记）
+  letter_valid_days: 90
+  # 到期前提前提示天数
+  remind_advance_days: 15
+
+# 上级党组织审批 / 备案（T-MEM-11，模块2 延伸）
+# 依据《中国共产党发展党员工作细则》：确定入党积极分子（第八条）与列为发展对象（第十三条）
+# 应当报上级党委备案；接收预备党员（第二十一条、第二十二条）与预备党员转正须报上级党委
+# 审批，党委应当在三个月内审批（第二十五条，特殊情况可以延长但不得超过六个月）。
+# 系统只登记"支部已报送"与"上级批复结果"，不代替上级审批、不自动改发展阶段；到期只提示核实。
+upper_report:
+  # 审批类事项（接收预备党员 / 预备党员转正）的批复时限天数：
+  # 细则第二十五条为"三个月内审批"，特殊情况不超过六个月，按学校实际口径调整。
+  approval_days: 90
+  # 到期前提前提示天数（备案类事项细则未统一规定时限，只按上级党委规定办，不套用本时限）
+  remind_advance_days: 15
+  # 各事项在"阶段材料要求"之外另需随报的材料（细则第八 / 十三 / 二十一条明文；
+  # 阶段材料要求由 material_requirements 沿发展链累加，不再重复登记）
+  extra_materials:
+    activist_record:
+      - 入党积极分子备案报告
+    candidate_record:
+      - 发展对象备案报告
+    probationary_approval:
+      - 中国共产党入党志愿书
+      - 入党积极分子培养考察登记表
+    member_approval:
+      - 中国共产党入党志愿书
+      - 预备党员教育考察登记表
+
+# 数据分级与第三人信息脱敏（T-MEM-12 / SEC-01、SEC-04，模块2 延伸）
+# 原则：系统读不懂"一段自由文本里有没有提到别人"，因此不假装能识别内容，只做两件可核对的事：
+# （1）按材料类型 / 记录类型自动带出密级（学校可按上级保密规定调整，系统不代替组织做保密审查）；
+# （2）在出口按密级收敛：密级高于查看者等级的第三人字段不返回正文，涉密内容不进导出、
+#     不进知识库、不向量化。
+# 密级取值：public / internal / sensitive / classified。
+data_sensitivity:
+  # 党员材料按材料类型默认密级。政治审查材料含第三人（亲属、证明人）信息，按涉密级处理：
+  # 第三人字段正文对**全部角色**都不返回（只留元数据），原始材料只在党组织线下流转。
+  # 若学校认为按敏感级（组织人员可见正文）更合适，把它的取值改成 sensitive 即可——
+  # 这是放宽不是收紧，改了要自己承担组织内部的可见范围。
+  member_material_levels:
+    政治审查材料: classified
+    群众评议材料: sensitive
+  # 未列出的材料类型按内部处理（不猜内容，也不默认抬高）
+  default_material_level: internal
+  # 登记时的常见简称归一到标准材料名，避免用简称绕过密级
+  material_aliases:
+    政审材料: 政治审查材料
+    政治审查: 政治审查材料
+    群众评议: 群众评议材料
+  # 民主评议记录默认密级：含个人自评、党员互评、支部评定意见原文
+  member_review_level: sensitive
+  # 选优投票明细默认密级：投票人身份属第三人信息，默认不返回（只回"我投没投"）
+  member_vote_level: sensitive
+  # 选优结论与团组织推优台账默认密级：两者都含"组织对某人的评价 / 推优说明"，
+  # 推优说明里的第三人信息（他人意见）按同一口径收敛
+  member_selection_level: sensitive
+
+# 评分规则配置
+scoring_rules:
+  # 维度权重（可按租户覆盖）
+  weights:
+    theory_test: 0.2      # 理论测试成绩
+    volunteer_service: 0.2 # 志愿服务时长
+    academic: 0.2          # 学业表现
+    public_review: 0.2     # 群众评议
+    party_review: 0.2      # 党员意见
+
+  # 硬性风险项（出现即标记）
+  risk_items:
+    - 挂科
+    - 处分
+    - 群众评议不满意率超过30%
+
+# 提醒规则配置
+reminder_rules:
+  # 培养期满提醒
+  training_period:
+    enabled: true
+    advance_days: 30
+    recipients:
+      - 培养联系人
+      - 支部书记
+
+  # 材料提交提醒
+  material_submission:
+    enabled: true
+    advance_days: 15
+    recipients:
+      - 本人
+      - 培养联系人
+
+  # 会议讨论提醒
+  meeting_discussion:
+    enabled: true
+    advance_days: 7
+    recipients:
+      - 支部书记
+
+  # 转正提醒
+  probationary_expiration:
+    enabled: true
+    advance_days: 30
+    recipients:
+      - 本人
+      - 支部书记
+
+# 考核指标配置
+assessment_indicators:
+  # 组织建设类
+  organization:
+    - code: ORG_001
+      name: 支部设置规范率
+      formula: 规范支部数 / 总支部数 * 100
+      target: 100
+
+  # 党员发展类
+  development:
+    - code: DEV_001
+      name: 年度发展党员人数
+      formula: 发展党员数
+      target: 按计划
+
+    - code: DEV_002
+      name: 材料完整率
+      formula: 材料齐全人数 / 总人数 * 100
+      target: 100
+
+  # 组织生活类
+  organization_life:
+    - code: LIFE_001
+      name: 三会一课完成率
+      formula: 实际次数 / 要求次数 * 100
+      target: 100
+
+    - code: LIFE_002
+      name: 会议记录完整率
+      formula: 有记录会议数 / 总会议数 * 100
+      target: 100
+
+# 组织生活（三会一课）周期频次与应办事项提示（模块3）
+# 频次按**周期**（year / quarter / month）表达，年度要求由周期派生：同一件事只写一份，
+# 不出现"每月 1 次"与"每年 12 次"两处并存而互相矛盾的口径。
+# 依据《中国共产党支部工作条例（试行）》：组织生活会每年至少 1 次（一般安排在第四季度）；
+# 支部党员大会、党课一般每季度至少 1 次；党支部委员会会议、党小组会一般每月 1 次。
+# 学校如需加严，改这里即可。
+# 仅作为工作台提示与考核参照，不由模型自行认定"完成"；
+# 完成认定以人工审核通过的会议记录为准。
+activity_requirements:
+  branch_member_meeting:      # 支部大会
+    period: quarter
+    per_period: 1
+    basis: 支部党员大会一般每季度召开 1 次
+  branch_committee_meeting:   # 支委会
+    period: month
+    per_period: 1
+    basis: 党支部委员会会议一般每月召开 1 次
+  party_group_meeting:        # 党小组会
+    period: month
+    per_period: 1
+    basis: 党小组会一般每月召开 1 次（未划分党小组的支部不适用）
+  party_lecture:              # 党课
+    period: quarter
+    per_period: 1
+    basis: 党支部一般每季度至少组织 1 次党课
+  organizational_life_meeting:  # 组织生活会
+    period: year
+    per_period: 1
+    basis: 党支部每年至少召开 1 次组织生活会，一般安排在第四季度
+  other:                      # 其他组织生活
+    period: none
+    per_period: 0
+    basis: 其他组织生活不设固定频次
+
+# 民主评议党员（模块3，制度依据《中国共产党支部工作条例（试行）》第十九条）
+# 支部一般每年开展 1 次民主评议党员，按"个人自评、党员互评、民主测评"的程序进行，
+# 由支委会或党员大会根据评议情况和党员日常表现提出评定意见；可以结合组织生活会一并进行。
+# 系统只做两件事：把程序与结果记下来（等次由人工确定，不由模型生成），
+# 以及把结果送另一位有权限的人员审核后归档到本人档案。
+democratic_review:
+  # 等次口径与顺序；学校如只用部分等次，改这里即可（界面与校验同一来源）。
+  grades:
+    - outstanding   # 优秀
+    - qualified     # 合格
+    - basic         # 基本合格
+    - unqualified   # 不合格
+  # 评定等次与比例的限制由学校党委组织部门规定，系统不自动限制、也不自动否定；
+  # 这段文字会随汇总一起显示，提示"比例上限按上级规定执行"。
+  outstanding_notice: 优秀等次比例上限按学校党委组织部门的规定执行，系统不自动截断或排名
+  # 不合格党员的组织处置（限期改正、劝退、除名等）须按党章党规由党组织研究决定，
+  # 系统只提示"需按党章党规研究处置"，不自动生成处置意见。
+  unqualified_notice: 拟评定不合格的，组织处置须按党章党规由党组织研究决定，系统不自动生成处置意见
+  # 评议结果对本人反馈的口径提示（本人只能看自己的评议结果）。
+  feedback_notice: 评定意见应向本人反馈；本人只能在"本人档案"查看自己的评议结果

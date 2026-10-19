@@ -1,0 +1,411 @@
+{
+  "name": "WF-08-1 wf_career_path 阶段性生涯路径生成",
+  "space_id": "0",
+  "workflow_id": "0",
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {
+          "name": "in_user_id",
+          "type": "string",
+          "required": true,
+          "description": "用户标识"
+        },
+        {
+          "name": "in_self_report",
+          "type": "string",
+          "required": true,
+          "description": "学生自述：专业/能力/兴趣/求职目标/每周可投入时间"
+        },
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true,
+          "description": "当前时间戳（秒），由时间插件提供"
+        }
+      ]
+    },
+    {
+      "id": "100002",
+      "type": "查询数据",
+      "title": "查询求职档案",
+      "description": "【待配置】目标表：career_profile。条件：user_id = in_user_id（EQUAL）。limit 1。字段：user_id / school / grade / major / ability_tags / interest_tags / job_goal / target_industry / data_source / updated_at。",
+      "outputs": [
+        {
+          "name": "q_profile",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": [
+              {
+                "type": "string",
+                "name": "user_id"
+              },
+              {
+                "type": "string",
+                "name": "school"
+              },
+              {
+                "type": "string",
+                "name": "grade"
+              },
+              {
+                "type": "string",
+                "name": "major"
+              },
+              {
+                "type": "string",
+                "name": "ability_tags"
+              },
+              {
+                "type": "string",
+                "name": "interest_tags"
+              },
+              {
+                "type": "string",
+                "name": "job_goal"
+              },
+              {
+                "type": "string",
+                "name": "target_industry"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "100003",
+      "type": "代码",
+      "title": "前置校验",
+      "description": "★ 校验类状态在分支之前一次算全，两条分支 + 结束节点都能无条件引用。",
+      "inputs": {
+        "q_profile": "100002.q_profile",
+        "in_self_report": "100001.in_self_report"
+      },
+      "code": "REQUIRED = ['major', 'ability_tags', 'interest_tags', 'job_goal']\nCN = {'major': '专业', 'ability_tags': '能力标签', 'interest_tags': '兴趣方向', 'job_goal': '求职目标'}\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    q = p.get('q_profile') or []\n    prof = q[0] if q and isinstance(q[0], dict) else {}\n    missing = [CN[k] for k in REQUIRED if not str(prof.get(k) or '').strip()]\n    registered = len(prof) > 0\n\n    if not registered:\n        status = 'not_registered'\n        tip = ('我还没有你的求职档案。先告诉我：学校、专业、年级、能力标签、兴趣方向、目标岗位，'\n               '我就能给你排一条能落到日历上的生涯路径。')\n    elif missing:\n        status = 'need_more_info'\n        tip = '还差这几项：' + '、'.join(missing) + '。补齐后我才能排出可执行的路径。'\n    else:\n        status = 'checked'\n        tip = ''\n\n    ret: Output = {\n        'v_ok': 'Y' if status == 'checked' else 'N',\n        'v_status': status,\n        'v_missing': '、'.join(missing),\n        'v_tip_text': tip,\n        'v_major': str(prof.get('major') or ''),\n        'v_ability': str(prof.get('ability_tags') or ''),\n        'v_interest': str(prof.get('interest_tags') or ''),\n        'v_goal': str(prof.get('job_goal') or ''),\n        'v_grade': str(prof.get('grade') or ''),\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_ok",
+          "type": "string"
+        },
+        {
+          "name": "v_status",
+          "type": "string"
+        },
+        {
+          "name": "v_missing",
+          "type": "string"
+        },
+        {
+          "name": "v_tip_text",
+          "type": "string"
+        },
+        {
+          "name": "v_major",
+          "type": "string"
+        },
+        {
+          "name": "v_ability",
+          "type": "string"
+        },
+        {
+          "name": "v_interest",
+          "type": "string"
+        },
+        {
+          "name": "v_goal",
+          "type": "string"
+        },
+        {
+          "name": "v_grade",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100004",
+      "type": "选择器",
+      "title": "档案是否完整",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_ok",
+              "right": "Y"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100005",
+      "type": "知识库",
+      "title": "检索规划方法论",
+      "description": "【待配置】简历方法论知识库：生涯规划通用框架、各行业岗位能力地图、证书与实习节奏。禁止放学生个人档案。",
+      "datasets": [],
+      "top_k": 5,
+      "min_score": 0.5,
+      "inputs": {
+        "Query": "100003.v_goal"
+      },
+      "outputs": [
+        {
+          "name": "k_method",
+          "type": "list",
+          "items": "string"
+        }
+      ]
+    },
+    {
+      "id": "100006",
+      "type": "大模型",
+      "title": "生成生涯路径",
+      "model": "豆包·2.0·pro",
+      "inputs": {
+        "v_major": "100003.v_major",
+        "v_grade": "100003.v_grade",
+        "v_ability": "100003.v_ability",
+        "v_interest": "100003.v_interest",
+        "v_goal": "100003.v_goal",
+        "in_self_report": "100001.in_self_report",
+        "k_method": "100005.k_method"
+      },
+      "llm_param": {
+        "temperature": 0.4
+      },
+      "prompt": "学生自述：{{in_self_report}}\n档案：专业 {{v_major}}｜年级 {{v_grade}}｜能力 {{v_ability}}｜兴趣 {{v_interest}}｜目标 {{v_goal}}",
+      "system_prompt": "你是「就业与生涯规划助手」的生涯路径模块，服务学生、就业中心与校友。\n\n【可用方法论】\n{{k_method}}\n\n【任务】结合专业、能力、兴趣和求职目标，生成 3~5 个**阶段性**生涯路径节点。\n\n【硬性要求】\n1. 只输出一个 JSON 数组，不要任何解释、不要 Markdown 代码块围栏。\n2. 每项字段固定为：stage（阶段名，12 字以内）、offset_start_days（整数，相对今天开始的天数偏移）、offset_end_days（整数，相对今天的结束天数偏移）、action（这一阶段要做的 2~3 件事，用「；」分隔）、deliverable（阶段产出物）。\n3. **不要推算任何具体日期**，只给相对天数偏移，日期由系统统一计算。\n4. 阶段必须递进且可执行（例：打基础 → 攒经历 → 对口实习 → 秋招投递 → 复盘补投）。\n5. 严禁按性别、地域、年龄、婚育、户籍等敏感属性做任何区分或推荐。\n6. 不代写简历、不编造对方经历。\n\n【输出示例】\n[{\"stage\":\"打基础\",\"offset_start_days\":0,\"offset_end_days\":30,\"action\":\"补齐岗位要求的核心技能；做 1 个能讲清楚的项目\",\"deliverable\":\"1 个项目复盘文档\"},{\"stage\":\"攒经历\",\"offset_start_days\":30,\"offset_end_days\":90,\"action\":\"投暑期实习；每周复盘一次投递数据\",\"deliverable\":\"1 段对口实习\"}]",
+      "outputs": [
+        {
+          "name": "llm_stages_json",
+          "type": "string"
+        },
+        {
+          "name": "llm_path",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100007",
+      "type": "代码",
+      "title": "解析阶段与时间",
+      "description": "日期一律由代码算（大模型算日期十次错三次）。输出双字段：xxx_ts 用来算、xxx_label 用来看。",
+      "inputs": {
+        "llm_stages_json": "100006.llm_stages_json",
+        "in_now_ts": "100001.in_now_ts"
+      },
+      "code": "import datetime\nimport json\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    raw = p.get('llm_stages_json')\n    try:\n        now = int(p.get('in_now_ts') or 0)\n    except Exception:\n        now = 0\n    if now <= 0:\n        now = int(datetime.datetime.now().timestamp())\n\n    data = []\n    if isinstance(raw, list):\n        data = raw\n    elif isinstance(raw, str) and raw.strip():\n        try:\n            data = json.loads(raw)\n        except Exception:\n            data = []\n    if not isinstance(data, list):\n        data = []\n\n    stages = []\n    for i, s in enumerate(data):\n        if not isinstance(s, dict):\n            continue\n        try:\n            off_s = int(float(s.get('offset_start_days') or 0))\n        except Exception:\n            off_s = 0\n        try:\n            off_e = int(float(s.get('offset_end_days') or off_s))\n        except Exception:\n            off_e = off_s\n        if off_e < off_s:\n            off_e = off_s\n        start_ts = now + off_s * 86400\n        end_ts = now + off_e * 86400\n        stages.append({\n            'stage_index': i + 1,\n            'stage_name': str(s.get('stage') or ''),\n            'start_ts': start_ts,\n            'end_ts': end_ts,\n            'start_label': datetime.datetime.fromtimestamp(start_ts).strftime('%Y-%m-%d'),\n            'end_label': datetime.datetime.fromtimestamp(end_ts).strftime('%Y-%m-%d'),\n            'deliverable': str(s.get('deliverable') or ''),\n            'action': str(s.get('action') or ''),\n        })\n\n    lines = []\n    for s in stages:\n        lines.append('%d. %s（%s ~ %s）\\n   要做的：%s\\n   阶段产出：%s' % (\n            s['stage_index'], s['stage_name'], s['start_label'], s['end_label'],\n            s['action'], s['deliverable']))\n\n    days_left = 0\n    if stages:\n        days_left = int((int(stages[0]['end_ts']) - now) / 86400)\n\n    if stages:\n        summary = ('你的阶段性生涯路径（共 %d 个阶段）：\\n%s\\n\\n'\n                   '当前第一阶段还剩 %d 天，建议本周先完成它的第一条动作。') % (\n            len(stages), '\\n'.join(lines), days_left)\n    else:\n        summary = ''\n\n    ret: Output = {\n        'v_summary': summary,\n        'v_stages': stages,\n        'v_stage_count': len(stages),\n        'v_days_left': days_left,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_summary",
+          "type": "string"
+        },
+        {
+          "name": "v_stages",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_stage_count",
+          "type": "integer"
+        },
+        {
+          "name": "v_days_left",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100008",
+      "type": "批处理",
+      "title": "批量写里程碑",
+      "description": "遍历 v_stages，逐条写入职业路径里程碑表。★ 批处理体内的节点引用「当前元素」时：blockID 写本批处理节点 id（100008），变量名取本节点 inputParameters 的名字（input）。",
+      "inputs": {
+        "input": "100007.v_stages"
+      },
+      "concurrent_size": 10,
+      "batch_size": 100,
+      "canvas_position": {
+        "x": 3600,
+        "y": 120
+      },
+      "outputs": [],
+      "inner_edges": [
+        [
+          "100008",
+          "100081",
+          "loop-function-inline-output"
+        ],
+        [
+          "100081",
+          "100008",
+          null,
+          "loop-function-inline-input"
+        ]
+      ],
+      "blocks": [
+        {
+          "id": "100081",
+          "type": "新增数据",
+          "title": "写里程碑",
+          "description": "【待配置】目标表：career_path_milestone。字段映射：\nuser_id←100001.in_user_id | job_goal←100003.v_goal | stage_index←当前元素的 stage_index | stage_name←当前元素的 stage_name | start_ts←当前元素的 start_ts | end_ts←当前元素的 end_ts | start_label←当前元素的 start_label | end_label←当前元素的 end_label | deliverable←当前元素的 deliverable | action←当前元素的 action | mapped_stage←留空由状态迁移工作流回填 | status←'pending' | created_at←100001.in_now_ts\n当前元素引用方式：blockID=100008，变量名=input。"
+        }
+      ]
+    },
+    {
+      "id": "100009",
+      "type": "代码",
+      "title": "信息不足占位",
+      "description": "与主分支输出同名变量，供变量聚合统一收口。不要用「变量赋值」节点。",
+      "inputs": {
+        "v_tip_text": "100003.v_tip_text"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    tip = str(p.get('v_tip_text') or '信息还不足，请补齐档案后重试。')\n    ret: Output = {\n        'v_summary': tip,\n        'v_stages': [],\n        'v_stage_count': 0,\n        'v_days_left': 0,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_summary",
+          "type": "string"
+        },
+        {
+          "name": "v_stages",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_stage_count",
+          "type": "integer"
+        },
+        {
+          "name": "v_days_left",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100010",
+      "type": "变量聚合",
+      "title": "结果聚合",
+      "description": "组内类型必须一致：string / list<object> / integer / integer 分成 4 组。主分支排前面。",
+      "merge_groups": [
+        {
+          "name": "Group1",
+          "variables": [
+            "100007.v_summary",
+            "100009.v_summary"
+          ]
+        },
+        {
+          "name": "Group2",
+          "variables": [
+            "100007.v_stages",
+            "100009.v_stages"
+          ]
+        },
+        {
+          "name": "Group3",
+          "variables": [
+            "100007.v_stage_count",
+            "100009.v_stage_count"
+          ]
+        },
+        {
+          "name": "Group4",
+          "variables": [
+            "100007.v_days_left",
+            "100009.v_days_left"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100011",
+      "type": "新增数据",
+      "title": "写服务日志",
+      "description": "【待配置】目标表：career_service_log。字段映射：user_id←in_user_id | scene←'测评' | action←'生涯路径生成' | result_count←Group3 | is_violation←'N' | reply_text←Group1 | week_label←上游周标签 | created_at←in_now_ts"
+    },
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_message": "100010.Group1",
+        "out_stages": "100010.Group2",
+        "out_stage_count": "100010.Group3",
+        "out_days_left": "100010.Group4",
+        "out_status": "100003.v_status",
+        "out_missing": "100003.v_missing"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "100001",
+      "100002"
+    ],
+    [
+      "100002",
+      "100003"
+    ],
+    [
+      "100003",
+      "100004"
+    ],
+    [
+      "100004",
+      "100005",
+      "true"
+    ],
+    [
+      "100004",
+      "100009",
+      "false"
+    ],
+    [
+      "100005",
+      "100006"
+    ],
+    [
+      "100006",
+      "100007"
+    ],
+    [
+      "100007",
+      "100008"
+    ],
+    [
+      "100008",
+      "100010",
+      "batch-output"
+    ],
+    [
+      "100009",
+      "100010"
+    ],
+    [
+      "100010",
+      "100011"
+    ],
+    [
+      "100011",
+      "900001"
+    ]
+  ]
+}

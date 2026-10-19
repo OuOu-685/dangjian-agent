@@ -1,0 +1,95 @@
+{
+  "name": "示例：规格模板（照着改）",
+  "space_id": "7493357645614039092",
+  "workflow_id": "0",
+
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "start",
+      "title": "开始",
+      "description": "工作流的起始节点，用于设定启动工作流需要的信息",
+      "outputs": [
+        {"name": "draft_text", "type": "string", "required": true, "description": "待审核的新闻稿全文"},
+        {"name": "start_date", "type": "string", "required": false, "description": "起始日期（会自动带 assistType）"}
+      ]
+    },
+
+    {
+      "id": "171354",
+      "type": "代码",
+      "title": "文本分段",
+      "inputs": {"draft_text": "100001.draft_text"},
+      "code": "async def main(draft_text: str) -> dict:\n    lines = draft_text.splitlines() if draft_text else []\n    paragraphs = [s.strip() for s in lines if s.strip()]\n    return {\"paragraphs\": paragraphs, \"total\": len(paragraphs)}",
+      "outputs": [
+        {"name": "paragraphs", "type": "list", "items": "string"},
+        {"name": "total", "type": "integer"}
+      ]
+    },
+
+    {
+      "id": "131835",
+      "type": "3",
+      "title": "风险监测",
+      "inputs": {
+        "paragraphs": "171354.paragraphs"
+      },
+      "model": "豆包·2.0·pro",
+      "prompt": "【待检测段落】\n{{paragraphs}}\n请对该段落逐条检查 4 类风险，并按 JSON 格式输出结果。",
+      "system_prompt": "# 角色\n你是校园新闻审核专家，需逐段审核校园新闻文稿。\n\n# 回复格式\n{\"风险检测结果\": [{\"风险类型\": \"事实冲突\", \"风险等级\": \"高\", \"问题描述\": \"…\", \"建议处理方式\": \"…\"}], \"综合风险等级\": \"高\"}\n\n# ⚠️ 严重约束\n1. 风险检测的对象只能是【待检测段落】中的内容\n2. 输出必须为严格 JSON，不得添加任何非 JSON 文字",
+      "outputs": [
+        {"name": "check_report", "type": "string"},
+        {"name": "risk_level", "type": "string"}
+      ]
+    },
+
+    {
+      "id": "125929",
+      "type": "选择器",
+      "title": "是否高风险",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {"operator": 1, "type": "string", "left": "131835.risk_level", "right": "高"}
+          ]
+        }
+      ]
+    },
+
+    {
+      "id": "161627",
+      "type": "新增数据",
+      "title": "写入日志",
+      "database_id": "7685924418467430427",
+      "inputs": {
+        "check_report": "131835.check_report",
+        "risk_level": "131835.risk_level"
+      },
+      "insert": [
+        ["1832469682178", "131835.check_report"],
+        ["1832469682179", "131835.risk_level"]
+      ]
+    },
+
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "check_report": "131835.check_report",
+        "risk_level": "131835.risk_level"
+      }
+    }
+  ],
+
+  "edges": [
+    ["100001", "171354"],
+    ["171354", "131835"],
+    ["131835", "125929"],
+    ["125929", "161627", "true"],
+    ["125929", "900001", "false"],
+    ["161627", "900001"]
+  ]
+}

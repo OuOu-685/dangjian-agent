@@ -1,0 +1,417 @@
+{
+  "type": "coze-workflow-clipboard-data",
+  "source": {
+    "workflowId": "0",
+    "flowMode": 0,
+    "spaceId": "7495957404262121481",
+    "isDouyin": false,
+    "host": "www.coze.cn"
+  },
+  "json": {
+    "nodes": [
+      {
+        "id": "198104",
+        "type": "43",
+        "meta": {
+          "position": {
+            "x": 2143.4734399142885,
+            "y": 182.05140695024284
+          }
+        },
+        "data": {
+          "outputs": [
+            {
+              "type": "list",
+              "name": "outputList",
+              "schema": {
+                "type": "object",
+                "schema": []
+              }
+            },
+            {
+              "type": "integer",
+              "name": "rowNum"
+            }
+          ],
+          "nodeMeta": {
+            "description": "从表获取数据，用户可定义查询条件、选择列等，输出符合条件的数据",
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icaon-database-select.jpg",
+            "mainColor": "#F2B600",
+            "subTitle": "查询数据",
+            "title": "查询数据_1"
+          },
+          "inputs": {
+            "databaseInfoList": [],
+            "selectParam": {
+              "condition": {
+                "logic": "AND"
+              }
+            }
+          }
+        },
+        "_temp": {
+          "bounds": {
+            "x": 1963.4734399142885,
+            "y": 182.05140695024284,
+            "width": 360,
+            "height": 138
+          },
+          "externalData": {
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icaon-database-select.jpg",
+            "description": "从表获取数据，用户可定义查询条件、选择列等，输出符合条件的数据",
+            "title": "查询数据_1",
+            "mainColor": "#F2B600"
+          }
+        }
+      },
+      {
+        "id": "129725",
+        "type": "46",
+        "meta": {
+          "position": {
+            "x": 1985.3940854086172,
+            "y": 373.3079099324132
+          }
+        },
+        "data": {
+          "outputs": [
+            {
+              "type": "list",
+              "name": "outputList",
+              "schema": {
+                "type": "object",
+                "schema": []
+              }
+            },
+            {
+              "type": "integer",
+              "name": "rowNum"
+            }
+          ],
+          "nodeMeta": {
+            "description": "向表添加新数据记录，用户输入数据内容后插入数据库",
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-database-insert.jpg",
+            "mainColor": "#F2B600",
+            "subTitle": "新增数据",
+            "title": "新增数据_1"
+          },
+          "inputs": {
+            "databaseInfoList": []
+          }
+        },
+        "_temp": {
+          "bounds": {
+            "x": 1805.3940854086172,
+            "y": 373.3079099324132,
+            "width": 360,
+            "height": 138
+          },
+          "externalData": {
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-database-insert.jpg",
+            "description": "向表添加新数据记录，用户输入数据内容后插入数据库",
+            "title": "新增数据_1",
+            "mainColor": "#F2B600"
+          }
+        }
+      },
+      {
+        "id": "157294",
+        "type": "42",
+        "meta": {
+          "position": {
+            "x": 2178.602185359993,
+            "y": 329.0823584251201
+          }
+        },
+        "data": {
+          "outputs": [
+            {
+              "type": "list",
+              "name": "outputList",
+              "schema": {
+                "type": "object",
+                "schema": []
+              }
+            },
+            {
+              "type": "integer",
+              "name": "rowNum"
+            }
+          ],
+          "nodeMeta": {
+            "description": "修改表中已存在的数据记录，用户指定更新条件和内容来更新数据",
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icaon-database-update.jpg",
+            "mainColor": "#F2B600",
+            "subTitle": "更新数据",
+            "title": "更新数据"
+          },
+          "inputs": {
+            "databaseInfoList": [],
+            "updateParam": {
+              "condition": {
+                "logic": "AND"
+              }
+            }
+          }
+        },
+        "_temp": {
+          "bounds": {
+            "x": 1998.6021853599932,
+            "y": 329.0823584251201,
+            "width": 360,
+            "height": 138
+          },
+          "externalData": {
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icaon-database-update.jpg",
+            "description": "修改表中已存在的数据记录，用户指定更新条件和内容来更新数据",
+            "title": "更新数据",
+            "mainColor": "#F2B600"
+          }
+        }
+      },
+      {
+        "id": "162210",
+        "type": "12",
+        "meta": {
+          "position": {
+            "x": 2139.570245975877,
+            "y": 244.5025099648292
+          }
+        },
+        "data": {
+          "outputs": [
+            {
+              "type": "list",
+              "name": "outputList",
+              "schema": {
+                "type": "object",
+                "schema": []
+              }
+            },
+            {
+              "type": "integer",
+              "name": "rowNum"
+            }
+          ],
+          "nodeMeta": {
+            "description": "基于用户自定义的 SQL 完成对数据库的增删改查操作",
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Database-v2.jpg",
+            "mainColor": "#FF811A",
+            "subTitle": "SQL自定义",
+            "title": "SQL自定义"
+          },
+          "inputs": {
+            "inputParameters": [],
+            "databaseInfoList": []
+          }
+        },
+        "_temp": {
+          "bounds": {
+            "x": 1959.5702459758768,
+            "y": 244.5025099648292,
+            "width": 360,
+            "height": 138
+          },
+          "externalData": {
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-Database-v2.jpg",
+            "description": "基于用户自定义的 SQL 完成对数据库的增删改查操作",
+            "title": "SQL自定义",
+            "mainColor": "#FF811A"
+          }
+        }
+      },
+      {
+        "id": "165575",
+        "type": "6",
+        "meta": {
+          "position": {
+            "x": 2018.571233885116,
+            "y": 365.50152205558993
+          }
+        },
+        "data": {
+          "outputs": [
+            {
+              "type": "list",
+              "name": "outputList",
+              "schema": {
+                "type": "object",
+                "schema": [
+                  {
+                    "type": "string",
+                    "name": "output"
+                  },
+                  {
+                    "type": "string",
+                    "name": "documentId"
+                  }
+                ]
+              }
+            }
+          ],
+          "nodeMeta": {
+            "description": "在选定的知识中,根据输入变量召回最匹配的信息,并以列表形式返回",
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-StrConcat-v2.jpg",
+            "mainColor": "#5C62FF",
+            "subTitle": "知识库检索",
+            "title": "知识库检索"
+          },
+          "inputs": {
+            "datasetParam": [
+              {
+                "name": "datasetList",
+                "input": {
+                  "type": "list",
+                  "schema": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "literal",
+                    "content": []
+                  }
+                }
+              },
+              {
+                "name": "topK",
+                "input": {
+                  "type": "integer",
+                  "value": {
+                    "type": "literal",
+                    "content": "5",
+                    "rawMeta": {
+                      "type": 2
+                    }
+                  }
+                }
+              },
+              {
+                "name": "useRerank",
+                "input": {
+                  "type": "boolean",
+                  "value": {
+                    "type": "literal",
+                    "content": true,
+                    "rawMeta": {
+                      "type": 3
+                    }
+                  }
+                }
+              },
+              {
+                "name": "useRewrite",
+                "input": {
+                  "type": "boolean",
+                  "value": {
+                    "type": "literal",
+                    "content": true,
+                    "rawMeta": {
+                      "type": 3
+                    }
+                  }
+                }
+              },
+              {
+                "name": "isPersonalOnly",
+                "input": {
+                  "type": "boolean",
+                  "value": {
+                    "type": "literal",
+                    "content": true,
+                    "rawMeta": {
+                      "type": 3
+                    }
+                  }
+                }
+              },
+              {
+                "name": "datasetType",
+                "input": {
+                  "type": "integer",
+                  "value": {
+                    "type": "literal",
+                    "content": "0",
+                    "rawMeta": {
+                      "type": 2
+                    }
+                  }
+                }
+              },
+              {
+                "name": "VolcanoInfoList",
+                "input": {
+                  "type": "list",
+                  "schema": {
+                    "type": "object",
+                    "schema": [
+                      {
+                        "type": "string",
+                        "name": "datasetID"
+                      },
+                      {
+                        "type": "string",
+                        "name": "volcanoServiceID"
+                      }
+                    ]
+                  },
+                  "value": {
+                    "type": "literal",
+                    "content": []
+                  }
+                }
+              }
+            ],
+            "inputParameters": [
+              {
+                "name": "enableChatHistory",
+                "input": {
+                  "type": "boolean",
+                  "value": {
+                    "type": "literal",
+                    "content": false,
+                    "rawMeta": {
+                      "type": 3
+                    }
+                  }
+                }
+              },
+              {
+                "name": "chatHistoryRound",
+                "input": {
+                  "type": "float",
+                  "value": {
+                    "type": "literal",
+                    "content": 3,
+                    "rawMeta": {
+                      "type": 4
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "_temp": {
+          "bounds": {
+            "x": 1838.571233885116,
+            "y": 365.50152205558993,
+            "width": 360,
+            "height": 138
+          },
+          "externalData": {
+            "icon": "https://lf3-static.bytednsdoc.com/obj/eden-cn/dvsmryvd_avi_dvsm/ljhwZthlaukjlkulzlp/icon/icon-StrConcat-v2.jpg",
+            "description": "在选定的知识中,根据输入变量召回最匹配的信息,并以列表形式返回",
+            "title": "知识库检索",
+            "mainColor": "#5C62FF"
+          }
+        }
+      }
+    ],
+    "edges": []
+  },
+  "bounds": {
+    "x": 1805.3940854086172,
+    "y": 182.05140695024284,
+    "width": 553.208099951376,
+    "height": 329.2565029821704
+  }
+}

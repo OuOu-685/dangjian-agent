@@ -1,0 +1,769 @@
+{
+  "name": "WF-8 wf_project_guide 作品型毕设指导（15 节点）",
+  "space_id": "0",
+  "workflow_id": "0",
+  "_comment": "由《WF-8 wf_project_guide 作品型毕设指导（15 节点）.md》转写。databaseInfoID 与 fieldID 是平台侧生成的数字 ID，无法凭空生成，已用 FILL_ME_* 占位，需在画布上配一次后回填。N05 原为「工作流节点（子工作流）」，因该类型的剪贴板数字编号未实测，改用接口等价的代码节点占位。",
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {
+          "name": "in_user_id",
+          "type": "string",
+          "required": true,
+          "description": "用户标识"
+        },
+        {
+          "name": "in_guide_type",
+          "type": "string",
+          "required": true,
+          "description": "选题 / 技术选型 / 进度 / 演示 / 文档"
+        },
+        {
+          "name": "in_question",
+          "type": "string",
+          "required": false,
+          "description": "学生的具体问题"
+        },
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true,
+          "description": "当前时间戳（秒）"
+        }
+      ]
+    },
+    {
+      "id": "100002",
+      "type": "查询数据",
+      "title": "查询档案",
+      "database_id": "FILL_ME_student_profile_db",
+      "select": {
+        "where": [
+          {
+            "field": "user_id",
+            "op": "EQUAL",
+            "value": "__REF__100001.in_user_id"
+          }
+        ],
+        "logic": "AND",
+        "fields": [
+          "FILL_ME_user_id",
+          "FILL_ME_school",
+          "FILL_ME_school_type",
+          "FILL_ME_college",
+          "FILL_ME_major",
+          "FILL_ME_degree",
+          "FILL_ME_topic",
+          "FILL_ME_current_stage"
+        ],
+        "limit": 1,
+        "order_by": []
+      },
+      "outputs": [
+        {
+          "name": "q_profile",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": [
+              {
+                "type": "string",
+                "name": "user_id"
+              },
+              {
+                "type": "string",
+                "name": "school"
+              },
+              {
+                "type": "string",
+                "name": "school_type"
+              },
+              {
+                "type": "string",
+                "name": "college"
+              },
+              {
+                "type": "string",
+                "name": "major"
+              },
+              {
+                "type": "string",
+                "name": "degree"
+              },
+              {
+                "type": "string",
+                "name": "topic"
+              },
+              {
+                "type": "string",
+                "name": "current_stage"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "100003",
+      "type": "代码",
+      "title": "前置校验",
+      "inputs": {
+        "in_user_id": "100001.in_user_id",
+        "in_guide_type": "100001.in_guide_type",
+        "q_profile": "100002.q_profile"
+      },
+      "code": "GUIDE_TYPES = ['选题', '技术选型', '进度', '演示', '文档']\n\n\ndef normalize_guide(raw):\n    s = str(raw).strip() if raw is not None else ''\n    if not s:\n        return ''\n    for t in GUIDE_TYPES:\n        if t in s:\n            return t\n    alias = {\n        '选什么': '选题', '做什么': '选题', '题目': '选题',\n        '技术栈': '技术选型', '框架': '技术选型',\n        '时间': '进度', '计划': '进度',\n        '讲稿': '演示', '答辩稿': '演示', '脚本': '演示',\n        '说明书': '文档', '报告': '文档',\n    }\n    for k, v in alias.items():\n        if k in s:\n            return v\n    return ''\n\n\nasync def main(args: Args) -> Output:\n    p = args.params\n    q = p.get('q_profile') or []\n    registered = len(q) > 0\n    prof = q[0] if registered and isinstance(q[0], dict) else {}\n\n    guide_type = normalize_guide(p.get('in_guide_type'))\n    if not guide_type:\n        guide_type = '选题'\n\n    if not registered:\n        status = 'not_registered'\n        tip = '我还没你的档案，先告诉我学校、专业、学历层次和当前阶段，我才能给你作品指导。'\n    else:\n        status = 'checked'\n        tip = ''\n\n    ret: Output = {\n        \"v_ok\": 'Y' if registered else 'N',\n        \"v_status\": status,\n        \"v_guide_type\": guide_type,\n        \"v_school\": prof.get('school', '') or '',\n        \"v_college\": prof.get('college', '') or '',\n        \"v_major\": prof.get('major', '') or '',\n        \"v_degree\": prof.get('degree', '') or '',\n        \"v_topic\": prof.get('topic', '') or '',\n        \"v_stage\": prof.get('current_stage', '') or '',\n        \"tip_text\": tip,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_ok",
+          "type": "string"
+        },
+        {
+          "name": "v_status",
+          "type": "string"
+        },
+        {
+          "name": "v_guide_type",
+          "type": "string"
+        },
+        {
+          "name": "v_school",
+          "type": "string"
+        },
+        {
+          "name": "v_college",
+          "type": "string"
+        },
+        {
+          "name": "v_major",
+          "type": "string"
+        },
+        {
+          "name": "v_degree",
+          "type": "string"
+        },
+        {
+          "name": "v_topic",
+          "type": "string"
+        },
+        {
+          "name": "v_stage",
+          "type": "string"
+        },
+        {
+          "name": "tip_text",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100004",
+      "type": "查询数据",
+      "title": "查询选题",
+      "database_id": "FILL_ME_graduation_project_db",
+      "select": {
+        "where": [
+          {
+            "field": "user_id",
+            "op": "EQUAL",
+            "value": "__REF__100001.in_user_id"
+          }
+        ],
+        "logic": "AND",
+        "fields": [
+          "FILL_ME_project_id",
+          "FILL_ME_user_id",
+          "FILL_ME_topic",
+          "FILL_ME_topic_type",
+          "FILL_ME_advisor_internal",
+          "FILL_ME_advisor_enterprise",
+          "FILL_ME_expected_deliverables"
+        ],
+        "limit": 5,
+        "order_by": []
+      },
+      "outputs": [
+        {
+          "name": "q_project",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": [
+              {
+                "type": "string",
+                "name": "project_id"
+              },
+              {
+                "type": "string",
+                "name": "user_id"
+              },
+              {
+                "type": "string",
+                "name": "topic"
+              },
+              {
+                "type": "string",
+                "name": "topic_type"
+              },
+              {
+                "type": "string",
+                "name": "advisor_internal"
+              },
+              {
+                "type": "string",
+                "name": "advisor_enterprise"
+              },
+              {
+                "type": "string",
+                "name": "expected_deliverables"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "100005",
+      "type": "工作流",
+      "title": "里程碑查询",
+      "description": "输入「学校 + 学院 + 专业 + 学校类型」，用三级回退查出该专业的毕设进程节点，并算出「当前节点 / 下一个节点 / 距结束还有几天 / 是否逾期」。",
+      "sub_workflow_id": "7684899404600164358",
+      "sub_workflow_version": "v0.0.3",
+      "input_defs": [
+        {
+          "name": "in_school",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "in_college",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "in_major",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "in_school_type",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true
+        }
+      ],
+      "inputs": {
+        "in_school": "100003.v_school",
+        "in_college": "100003.v_college",
+        "in_major": "100003.v_major",
+        "in_school_type": "100002.q_profile.school_type",
+        "in_now_ts": "100001.in_now_ts"
+      },
+      "outputs": [
+        {
+          "name": "ms_list",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          },
+          "required": false
+        },
+        {
+          "name": "ms_source",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "ms_found",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "current_task",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "current_range",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "next_task",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "next_range",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "days_left",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "is_overdue",
+          "type": "boolean",
+          "required": false
+        },
+        {
+          "name": "out_message",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "out_status",
+          "type": "string",
+          "required": false
+        }
+      ],
+      "sub_workflow_name": "wf_milestone_get",
+      "sub_plugin_id": "7684938132168638491"
+    },
+    {
+      "id": "100006",
+      "type": "查询数据",
+      "title": "查询规则1",
+      "database_id": "FILL_ME_school_rules_db",
+      "select": {
+        "where": [
+          {
+            "field": "school",
+            "op": "EQUAL",
+            "value": "__REF__100003.v_school"
+          },
+          {
+            "field": "stage",
+            "op": "EQUAL",
+            "value": "__REF__100003.v_stage"
+          }
+        ],
+        "logic": "AND",
+        "fields": [
+          "FILL_ME_school",
+          "FILL_ME_school_type",
+          "FILL_ME_college",
+          "FILL_ME_stage",
+          "FILL_ME_deadline",
+          "FILL_ME_materials",
+          "FILL_ME_format_rule",
+          "FILL_ME_notes"
+        ],
+        "limit": 10,
+        "order_by": []
+      },
+      "outputs": [
+        {
+          "name": "q_rule_primary",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": [
+              {
+                "type": "string",
+                "name": "school"
+              },
+              {
+                "type": "string",
+                "name": "school_type"
+              },
+              {
+                "type": "string",
+                "name": "college"
+              },
+              {
+                "type": "string",
+                "name": "stage"
+              },
+              {
+                "type": "string",
+                "name": "deadline"
+              },
+              {
+                "type": "string",
+                "name": "materials"
+              },
+              {
+                "type": "string",
+                "name": "format_rule"
+              },
+              {
+                "type": "string",
+                "name": "notes"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "100007",
+      "type": "查询数据",
+      "title": "查询规则2",
+      "database_id": "FILL_ME_school_rules_db",
+      "select": {
+        "where": [
+          {
+            "field": "school",
+            "op": "EQUAL",
+            "value": "通用"
+          },
+          {
+            "field": "school_type",
+            "op": "EQUAL",
+            "value": "__REF__100002.q_profile.school_type"
+          },
+          {
+            "field": "stage",
+            "op": "EQUAL",
+            "value": "__REF__100003.v_stage"
+          }
+        ],
+        "logic": "AND",
+        "fields": [
+          "FILL_ME_school",
+          "FILL_ME_school_type",
+          "FILL_ME_college",
+          "FILL_ME_stage",
+          "FILL_ME_deadline",
+          "FILL_ME_materials",
+          "FILL_ME_format_rule",
+          "FILL_ME_notes"
+        ],
+        "limit": 10,
+        "order_by": []
+      },
+      "outputs": [
+        {
+          "name": "q_rule_fallback",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": [
+              {
+                "type": "string",
+                "name": "school"
+              },
+              {
+                "type": "string",
+                "name": "school_type"
+              },
+              {
+                "type": "string",
+                "name": "college"
+              },
+              {
+                "type": "string",
+                "name": "stage"
+              },
+              {
+                "type": "string",
+                "name": "deadline"
+              },
+              {
+                "type": "string",
+                "name": "materials"
+              },
+              {
+                "type": "string",
+                "name": "format_rule"
+              },
+              {
+                "type": "string",
+                "name": "notes"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "100008",
+      "type": "代码",
+      "title": "规则选级",
+      "inputs": {
+        "q_rule_primary": "100006.q_rule_primary",
+        "q_rule_fallback": "100007.q_rule_fallback"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params\n    q1 = p.get('q_rule_primary') or []\n    q2 = p.get('q_rule_fallback') or []\n    if q1:\n        rule, source = q1, '校规精确'\n    elif q2:\n        rule, source = q2, '类型兜底'\n    else:\n        rule, source = [], '未查到'\n    ret: Output = {\"v_rule\": rule, \"v_rule_source\": source}\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_rule",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_rule_source",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100009",
+      "type": "选择器",
+      "title": "是否已建档",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_ok",
+              "right": "Y"
+            }
+          ]
+        },
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_ok",
+              "right": "N"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100010",
+      "type": "知识库",
+      "title": "检索知识",
+      "datasets": [
+        "FILL_ME_flow_kb_id",
+        "FILL_ME_academic_kb_id"
+      ],
+      "top_k": 5,
+      "min_score": 0.5,
+      "inputs": {
+        "Query": "100003.v_guide_type"
+      },
+      "outputs": [
+        {
+          "name": "k_flow",
+          "type": "list",
+          "items": "string"
+        }
+      ]
+    },
+    {
+      "id": "100011",
+      "type": "大模型",
+      "title": "生成作品指导",
+      "model": "豆包·2.0·pro",
+      "inputs": {
+        "v_school": "100003.v_school",
+        "v_major": "100003.v_major",
+        "v_degree": "100003.v_degree",
+        "v_topic": "100003.v_topic",
+        "v_stage": "100003.v_stage",
+        "v_guide_type": "100003.v_guide_type",
+        "in_question": "100001.in_question",
+        "q_project": "100004.q_project",
+        "ms_current_task": "100005.current_task",
+        "ms_next_task": "100005.next_task",
+        "ms_next_range": "100005.next_range",
+        "ms_days_left": "100005.days_left",
+        "ms_is_overdue": "100005.is_overdue",
+        "ms_source": "100005.ms_source",
+        "v_rule": "100008.v_rule",
+        "v_rule_source": "100008.v_rule_source",
+        "k_flow": "100010.k_flow"
+      },
+      "llm_param": {
+        "temperature": 0.5
+      },
+      "prompt": "请按 {{v_guide_type}} 给出指导。",
+      "system_prompt": "你是「毕业领航」的作品型毕设指导模块。\n\n【学生信息】\n学校：{{v_school}}\n专业：{{v_major}}\n学历层次：{{v_degree}}\n选题：{{v_topic}}\n当前阶段：{{v_stage}}\n\n【当前位置】来源：{{ms_source}}\n当前节点：{{ms_current_task}}\n下一节点：{{ms_next_task}}（{{ms_next_range}}）\n剩余天数：{{ms_days_left}}\n是否逾期：{{ms_is_overdue}}\n\n【学校规则】来源：{{v_rule_source}}\n{{v_rule}}\n\n【通用知识】\n{{k_flow}}\n\n【指导类型】{{v_guide_type}}\n【学生问题】{{in_question}}\n\n请按【指导类型】输出：\n\n■ 如果类型是「选题」：\n推荐 3-5 个企业真题方向，每个说明：研究方向、难度（★）、所需资源、适配建议。\n\n■ 如果类型是「技术选型」：\n对比 2-3 个技术栈，每个说明：优劣、学习成本、适配场景、推荐理由。\n\n■ 如果类型是「进度」：\n按当前节点拆解本周任务，给出具体时间节点和可勾选清单。\n\n■ 如果类型是「演示」：\n生成 5 分钟答辩演示脚本，结构：\n1. 开场（30秒）：自我介绍 + 选题\n2. 功能演示（2分钟）：核心功能 + 亮点\n3. 技术讲解（1.5分钟）：技术选型 + 难点\n4. 创新点（30秒）\n5. 展望（30秒）\n\n■ 如果类型是「文档」：\n给出项目文档结构（需求说明书 / 详细设计说明书 / 测试报告 / 成果文档），每个列 3-5 个核心章节。\n\n【规则】\n1. 不代写完整代码、不代做作品、不编造数据。\n2. 规则来源是「类型兜底」时，开头声明\"以下为通用建议，请以你学校文件为准\"。\n3. 全文不超过 600 字，分点输出。",
+      "outputs": [
+        {
+          "name": "llm_guide",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100012",
+      "type": "新增数据",
+      "title": "写进度日志",
+      "database_id": "FILL_ME_user_progress_log_db",
+      "insert": [
+        [
+          "FILL_ME_user_id",
+          "__REF__100001.in_user_id"
+        ],
+        [
+          "FILL_ME_school",
+          "__REF__100003.v_school"
+        ],
+        [
+          "FILL_ME_stage",
+          "__REF__100003.v_stage"
+        ],
+        [
+          "FILL_ME_action",
+          "作品指导"
+        ],
+        [
+          "FILL_ME_detail",
+          "__REF__100003.v_guide_type"
+        ],
+        [
+          "FILL_ME_workflow",
+          "wf_project_guide"
+        ],
+        [
+          "FILL_ME_created_at",
+          "__REF__100001.in_now_ts"
+        ]
+      ],
+      "outputs": [
+        {
+          "name": "outputList",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "rowNum",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100013",
+      "type": "代码",
+      "title": "未建档占位",
+      "inputs": {
+        "tip_text": "100003.tip_text"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params\n    tip = p.get('tip_text') or '我还没你的档案，先建档吧。'\n    ret: Output = {\"tip_text\": tip, \"llm_guide\": \"\"}\n    return ret\n",
+      "outputs": [
+        {
+          "name": "tip_text",
+          "type": "string"
+        },
+        {
+          "name": "llm_guide",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100014",
+      "type": "变量聚合",
+      "title": "结果聚合",
+      "merge_groups": [
+        {
+          "name": "Group1",
+          "variables": [
+            "100011.llm_guide",
+            "100013.tip_text"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_message": "100014.Group1",
+        "out_status": "100003.v_status",
+        "out_rule_source": "100008.v_rule_source",
+        "out_ms_source": "100005.ms_source",
+        "out_next_task": "100005.next_task",
+        "out_days_left": "100005.days_left"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "100001",
+      "100002"
+    ],
+    [
+      "100002",
+      "100003"
+    ],
+    [
+      "100003",
+      "100004"
+    ],
+    [
+      "100004",
+      "100005"
+    ],
+    [
+      "100005",
+      "100006"
+    ],
+    [
+      "100006",
+      "100007"
+    ],
+    [
+      "100007",
+      "100008"
+    ],
+    [
+      "100008",
+      "100009"
+    ],
+    [
+      "100009",
+      "100010",
+      "true"
+    ],
+    [
+      "100009",
+      "100013",
+      "false"
+    ],
+    [
+      "100010",
+      "100011"
+    ],
+    [
+      "100011",
+      "100012"
+    ],
+    [
+      "100012",
+      "100014"
+    ],
+    [
+      "100013",
+      "100014"
+    ],
+    [
+      "100014",
+      "900001"
+    ]
+  ]
+}

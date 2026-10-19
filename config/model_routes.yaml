@@ -1,0 +1,55 @@
+# 模型路由说明（运行时配置以 .env 和 app/llm/init_models.py 为准）。
+# 此文件不作为动态路由加载源。账号权限决定资料范围，问题与文档决定内容等级。
+
+# 数据级别定义
+# - public: 公开数据
+# - internal: 内部数据
+# - sensitive: 敏感数据
+# - classified: 涉密数据
+
+# 模型路由规则
+routes:
+  # 公开数据 - 可使用外部模型
+  - data_level: public
+    task_type: qa
+    model:
+      provider: qwen
+      name: qwen3.8-flash
+      is_private: false
+      max_tokens: 2000
+      temperature: 0.3
+
+  # 内部数据 - 仅调用已授权白名单中的云端模型
+  - data_level: internal
+    task_type: qa
+    model:
+      provider: qwen
+      name: qwen3.8-flash
+      is_private: false
+      max_tokens: 2000
+      temperature: 0.3
+
+  # 当前全部模型部署在云端，敏感数据拒绝模型调用
+  - data_level: sensitive
+    task_type: "*"
+    action: deny
+
+  # 涉密数据禁止模型调用
+  - data_level: classified
+    task_type: "*"
+    action: deny
+
+# 未匹配的请求不默认出网
+default:
+  action: deny
+
+# 模型提供商配置
+providers:
+  qwen:
+    type: api
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    api_key_env: DASHSCOPE_API_KEY
+    models:
+      - qwen3.8-flash
+      - qwen3.7-text-embedding-flash
+      - qwen3.7-text-rerank

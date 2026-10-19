@@ -1,0 +1,41 @@
+{
+  "name": "smoke_test_3nodes 冒烟测试（开始→代码→结束）",
+  "space_id": "0",
+  "workflow_id": "0",
+  "_comment": "最小可粘贴文件，用来验证「画布 Ctrl+V 通道」是否正常。约 3KB。生成：build_workflow.py assets/specs/smoke_test.json -o assets/smoke_test_3nodes.json",
+  "nodes": [
+    {
+      "id": "200001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {"name": "in_text", "type": "string", "required": true, "description": "任意文本"}
+      ]
+    },
+    {
+      "id": "200002",
+      "type": "代码",
+      "title": "转大写",
+      "inputs": {"in_text": "200001.in_text"},
+      "code": "async def main(in_text: str) -> dict:\n    s = in_text or \"\"\n    return {\"out_text\": s.upper(), \"length\": len(s)}\n",
+      "outputs": [
+        {"name": "out_text", "type": "string"},
+        {"name": "length", "type": "integer"}
+      ]
+    },
+    {
+      "id": "200003",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_text": "200002.out_text",
+        "out_length": "200002.length"
+      }
+    }
+  ],
+  "edges": [
+    ["200001", "200002"],
+    ["200002", "200003"]
+  ]
+}

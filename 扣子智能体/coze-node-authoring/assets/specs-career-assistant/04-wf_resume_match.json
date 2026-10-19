@@ -1,0 +1,353 @@
+{
+  "name": "WF-08-2 wf_resume_match 简历与岗位匹配诊断",
+  "space_id": "0",
+  "workflow_id": "0",
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {
+          "name": "in_user_id",
+          "type": "string",
+          "required": true,
+          "description": "用户标识"
+        },
+        {
+          "name": "in_resume_text",
+          "type": "string",
+          "required": true,
+          "description": "简历正文纯文本（不含证件号等敏感原件内容）"
+        },
+        {
+          "name": "in_jd_text",
+          "type": "string",
+          "required": true,
+          "description": "岗位描述原文"
+        },
+        {
+          "name": "in_job_id",
+          "type": "string",
+          "required": false,
+          "description": "岗位 ID（可选，仅用于记录）"
+        },
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true,
+          "description": "当前时间戳（秒）"
+        }
+      ]
+    },
+    {
+      "id": "100002",
+      "type": "代码",
+      "title": "前置校验",
+      "description": "简历只收纯文本；原件（PDF/图片）走附件，不进知识库、不入库。顺带检测敏感属性。",
+      "inputs": {
+        "in_resume_text": "100001.in_resume_text",
+        "in_jd_text": "100001.in_jd_text"
+      },
+      "code": "SENSITIVE = ['性别', '年龄', '籍贯', '户籍', '婚育', '已婚', '未婚', '政治面貌', '民族', '照片']\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    resume = str(p.get('in_resume_text') or '')\n    jd = str(p.get('in_jd_text') or '')\n    hits = [w for w in SENSITIVE if w in resume]\n\n    if len(resume.strip()) < 50:\n        status = 'need_more_info'\n        tip = '简历正文太短（不足 50 字）。请把简历文本完整贴进来（表格类内容按行贴），我才能做匹配分析。'\n    elif len(jd.strip()) < 30:\n        status = 'need_more_info'\n        tip = '岗位描述太短（不足 30 字）。请把完整 JD 贴进来，包含岗位职责与任职要求。'\n    else:\n        status = 'checked'\n        tip = ''\n\n    ret: Output = {\n        'v_ok': 'Y' if status == 'checked' else 'N',\n        'v_status': status,\n        'v_tip': tip,\n        'v_resume_len': len(resume),\n        'v_jd_len': len(jd),\n        'v_sensitive_hit': '、'.join(hits),\n        'v_sensitive_note': ('简历里出现了：' + '、'.join(hits) +\n                             '。这些属于敏感属性，建议删除或改为与岗位无关的表述，'\n                             '我可以帮你顺带处理。') if hits else '',\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_ok",
+          "type": "string"
+        },
+        {
+          "name": "v_status",
+          "type": "string"
+        },
+        {
+          "name": "v_tip",
+          "type": "string"
+        },
+        {
+          "name": "v_resume_len",
+          "type": "integer"
+        },
+        {
+          "name": "v_jd_len",
+          "type": "integer"
+        },
+        {
+          "name": "v_sensitive_hit",
+          "type": "string"
+        },
+        {
+          "name": "v_sensitive_note",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100003",
+      "type": "选择器",
+      "title": "材料是否够用",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100002.v_ok",
+              "right": "Y"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100004",
+      "type": "知识库",
+      "title": "检索简历方法论",
+      "description": "【待配置】知识库：简历撰写规范、STAR 法则、岗位能力词典、常见岗位关键词表。禁放任何学生简历原件。",
+      "datasets": [],
+      "top_k": 5,
+      "min_score": 0.5,
+      "inputs": {
+        "Query": "100001.in_jd_text"
+      },
+      "outputs": [
+        {
+          "name": "k_method",
+          "type": "list",
+          "items": "string"
+        }
+      ]
+    },
+    {
+      "id": "100005",
+      "type": "大模型",
+      "title": "匹配度诊断",
+      "model": "豆包·2.0·pro",
+      "inputs": {
+        "in_resume_text": "100001.in_resume_text",
+        "in_jd_text": "100001.in_jd_text",
+        "k_method": "100004.k_method"
+      },
+      "llm_param": {
+        "temperature": 0.2
+      },
+      "prompt": "【简历正文】\\n{{in_resume_text}}\\n\\n【岗位描述】\\n{{in_jd_text}}",
+      "system_prompt": "你是「就业与生涯规划助手」的简历诊断模块，服务学生、就业中心与校友。\n\n【可用方法论】\n{{k_method}}\n\n【任务】解析简历与岗位描述，输出匹配度、能力缺口和修改建议。\n\n【四个输出字段，严格按此结构】\n1. llm_match_score：0~100 的整数匹配度。评分口径：任职要求逐条对照，硬性要求（学历/专业/证书/技能栈）占 60%，经历匹配占 30%，加分项占 10%。\n2. llm_gap_json：能力缺口数组，每项 {\\\"gap\\\":缺口名, \\\"how\\\":可执行的补齐方式}，最多 8 条。\n3. llm_suggest_json：简历改写建议数组，每项 {\\\"origin\\\":简历原文片段, \\\"rewrite\\\":建议改写, \\\"why\\\":依据哪条 JD 要求}，最多 8 条。改写只能用简历里已有的事实，**不得新增任何未出现过的经历、数据或证书**。\n4. llm_summary：一段 80 字以内的总体判断。\n\n【红线】\n- 评分与建议中，严禁把性别、年龄、地域、户籍、婚育、民族、宗教信仰作为匹配因素；发现 JD 里有这类要求，直接在 llm_summary 里指出该要求涉嫌就业歧视，并说明不影响你的能力评估。\n- 不代写简历、不编造经历与数据。\n\n【格式】只输出一个 JSON 对象，键为上列四个字段名，不要 Markdown 代码块围栏，不要任何额外解释。",
+      "outputs": [
+        {
+          "name": "llm_match_score",
+          "type": "string"
+        },
+        {
+          "name": "llm_gap_json",
+          "type": "string"
+        },
+        {
+          "name": "llm_suggest_json",
+          "type": "string"
+        },
+        {
+          "name": "llm_summary",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100006",
+      "type": "代码",
+      "title": "结果规整",
+      "description": "把大模型返回的 JSON 字符串解成结构（代码节点输出即变量），并算匹配等级。",
+      "inputs": {
+        "llm_match_score": "100005.llm_match_score",
+        "llm_gap_json": "100005.llm_gap_json",
+        "llm_suggest_json": "100005.llm_suggest_json",
+        "llm_summary": "100005.llm_summary",
+        "v_sensitive_note": "100002.v_sensitive_note"
+      },
+      "code": "import json\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    try:\n        score = int(float(p.get('llm_match_score') or 0))\n    except Exception:\n        score = 0\n    score = max(0, min(100, score))\n    if score >= 80:\n        level = '匹配度较高'\n    elif score >= 60:\n        level = '基本匹配'\n    else:\n        level = '匹配度偏低'\n\n    def _load(key):\n        raw = p.get(key)\n        if isinstance(raw, list):\n            return [x for x in raw if isinstance(x, dict)]\n        if isinstance(raw, str) and raw.strip():\n            try:\n                data = json.loads(raw)\n            except Exception:\n                data = []\n            if isinstance(data, list):\n                return [x for x in data if isinstance(x, dict)]\n        return []\n\n    gap = _load('llm_gap_json')\n    sug = _load('llm_suggest_json')\n    summary_in = str(p.get('llm_summary') or '')\n    sensitive_note = str(p.get('v_sensitive_note') or '')\n\n    lines = ['匹配度：%d 分（%s）' % (score, level)]\n    if summary_in:\n        lines.append(summary_in)\n    if gap:\n        lines.append('能力缺口（按重要性排序）：')\n        for i, g in enumerate(gap[:8]):\n            lines.append('  %d) %s —— 补齐方式：%s' % (\n                i + 1, str(g.get('gap') or ''), str(g.get('how') or '')))\n    if sug:\n        lines.append('简历修改建议（原文 → 建议改写）：')\n        for i, s in enumerate(sug[:8]):\n            lines.append('  %d) 「%s」→「%s」（理由：%s）' % (\n                i + 1, str(s.get('origin') or ''), str(s.get('rewrite') or ''),\n                str(s.get('why') or '')))\n    if sensitive_note:\n        lines.append(sensitive_note)\n\n    ret: Output = {\n        'v_score': score,\n        'v_level': level,\n        'v_gap': gap,\n        'v_suggest': sug,\n        'v_summary': '\\n'.join(lines),\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_score",
+          "type": "integer"
+        },
+        {
+          "name": "v_level",
+          "type": "string"
+        },
+        {
+          "name": "v_gap",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_suggest",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_summary",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100007",
+      "type": "新增数据",
+      "title": "写诊断记录",
+      "description": "【待配置】目标表：career_resume_log。字段映射：\nuser_id←in_user_id | job_id←in_job_id | match_score←v_score | match_level←v_level | gap_json←v_gap | suggest_json←v_suggest | sensitive_hit←v_sensitive_hit | week_label←上游周标签 | created_at←in_now_ts\n★ 不要存简历原文全文（平台明文存储），只存诊断结果与分数。"
+    },
+    {
+      "id": "100008",
+      "type": "新增数据",
+      "title": "写服务日志",
+      "description": "【待配置】目标表：career_service_log。字段映射：user_id←in_user_id | scene←'简历' | action←'简历诊断' | result_count←v_score | is_violation←'N' | reply_text←Group1 | week_label←上游周标签 | created_at←in_now_ts"
+    },
+    {
+      "id": "100009",
+      "type": "代码",
+      "title": "材料不足占位",
+      "inputs": {
+        "v_tip": "100002.v_tip"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    tip = str(p.get('v_tip') or '信息还不足，请补齐简历与岗位描述。')\n    ret: Output = {\n        'v_score': 0,\n        'v_level': '未评级',\n        'v_gap': [],\n        'v_suggest': [],\n        'v_summary': tip,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_score",
+          "type": "integer"
+        },
+        {
+          "name": "v_level",
+          "type": "string"
+        },
+        {
+          "name": "v_gap",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_suggest",
+          "type": "list",
+          "items": "object",
+          "schema": {
+            "type": "object",
+            "schema": []
+          }
+        },
+        {
+          "name": "v_summary",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100010",
+      "type": "变量聚合",
+      "title": "结果聚合",
+      "description": "4 个分组（string / integer / list<object> / list<object>），组内类型一致，主分支在前。",
+      "merge_groups": [
+        {
+          "name": "Group1",
+          "variables": [
+            "100006.v_summary",
+            "100009.v_summary"
+          ]
+        },
+        {
+          "name": "Group2",
+          "variables": [
+            "100006.v_score",
+            "100009.v_score"
+          ]
+        },
+        {
+          "name": "Group3",
+          "variables": [
+            "100006.v_gap",
+            "100009.v_gap"
+          ]
+        },
+        {
+          "name": "Group4",
+          "variables": [
+            "100006.v_suggest",
+            "100009.v_suggest"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_message": "100010.Group1",
+        "out_score": "100010.Group2",
+        "out_gap": "100010.Group3",
+        "out_suggest": "100010.Group4",
+        "out_status": "100002.v_status",
+        "out_sensitive_hit": "100002.v_sensitive_hit"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "100001",
+      "100002"
+    ],
+    [
+      "100002",
+      "100003"
+    ],
+    [
+      "100003",
+      "100004",
+      "true"
+    ],
+    [
+      "100003",
+      "100009",
+      "false"
+    ],
+    [
+      "100004",
+      "100005"
+    ],
+    [
+      "100005",
+      "100006"
+    ],
+    [
+      "100006",
+      "100007"
+    ],
+    [
+      "100007",
+      "100010"
+    ],
+    [
+      "100009",
+      "100010"
+    ],
+    [
+      "100010",
+      "100008"
+    ],
+    [
+      "100008",
+      "900001"
+    ]
+  ]
+}

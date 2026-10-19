@@ -1,0 +1,444 @@
+{
+  "name": "WF-08-0 wf_career_guard 就业与生涯规划助手·合规守卫 v3",
+  "space_id": "0",
+  "workflow_id": "0",
+  "nodes": [
+    {
+      "id": "100001",
+      "type": "开始",
+      "title": "开始",
+      "outputs": [
+        {
+          "name": "in_user_id",
+          "type": "string",
+          "required": true,
+          "description": "用户标识（随机ID，不传学号）"
+        },
+        {
+          "name": "in_query",
+          "type": "string",
+          "required": true,
+          "description": "用户原始请求原文"
+        },
+        {
+          "name": "in_scene",
+          "type": "string",
+          "required": true,
+          "description": "简历 / 岗位 / 面试 / 测评"
+        },
+        {
+          "name": "in_now_ts",
+          "type": "integer",
+          "required": true,
+          "description": "当前时间戳（秒），由时间插件提供"
+        }
+      ]
+    },
+    {
+      "id": "100002",
+      "type": "意图识别",
+      "title": "意图分类",
+      "description": "★ 4 个 intents → 必须连 4 条 branch_N + 1 条 default（未匹配出口），一条都不能少，\n  否则画布上那个分支端口是悬空的。端口按 intents 数组下标对应：\n  branch_0 正常求职指导 → 100003 红线兜底（再走 知识库→大模型）\n  branch_1 代写简历或代做测评 → 100010 拒-代写话术\n  branch_2 编造经历学历或伪造材料 → 100011 拒-造假话术\n  branch_3 按性别地域等敏感属性筛选候选人 → 100006 拒-歧视话术\n  default 未匹配 → 100003（按正常处理，宁可漏判不要误伤）\n★ 这 4 类是按「需求明文红线（不得歧视性推荐）+ 通用规范（不代做/不造假）」定的。\n  需求原文只明文写了 1 条红线，另外两类是补的。要增删类别：\n  ① 改本节点 intents 列表；② 增删对应的 branch_N 出边；③ 同步 100014 的 CONTRACT 映射。\n★ 排序即 classificationId，也即端口下标，改顺序要同步改出边端口。",
+      "inputs": {
+        "query": "100001.in_query"
+      },
+      "intents": [
+        "正常求职指导",
+        "代写简历或代做测评",
+        "编造经历学历或伪造材料",
+        "按性别地域等敏感属性筛选候选人"
+      ],
+      "outputs": [
+        {
+          "name": "classificationId",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100003",
+      "type": "代码",
+      "title": "红线兜底",
+      "description": "意图识别判为「正常」或「未匹配」时，再用红线关键词兜一遍（第二道保险）。\n★ 放在分支之前：v_hit / v_reject_type 两条路径上都可用，结束节点与写库都能引用。",
+      "inputs": {
+        "in_query": "100001.in_query",
+        "in_scene": "100001.in_scene"
+      },
+      "code": "SCENE_ALIAS = {\n    '简历': '简历', '简历优化': '简历', '改简历': '简历',\n    '岗位': '岗位', '岗位匹配': '岗位', '找岗位': '岗位',\n    '面试': '面试', '模拟面试': '面试', '练面试': '面试',\n    '测评': '测评', '职业测评': '测评', '生涯': '测评', '规划': '测评',\n}\n\n# 第二道保险：意图识别没匹配上、或被误判成「正常求职指导」时，用关键词兜底。\n# 判据是【目的】不是措辞 —— 例如「帮我改得不像 AI 写的」目的是躲检测，往造假方向判。\nRISK_WORDS = [\n    (['代写', '替我写', '帮我写一份简历', '帮我答', '代做', '帮我做测评', '直接给我答案',\n      '给我现成的', '帮我编一段'], 'ghostwriting'),\n    (['造假', '伪造', '编造', '冒充', '查不出', '查不到', '背调', '改一下时间',\n      '删掉这段经历', '隐瞒'], 'fraud'),\n    (['男生优先', '女生优先', '限男', '限女', '不招女生', '不招男生', '本地人优先',\n      '不要外地', '不招外地', '婚育', '已婚已育', '未婚未育', '35岁以下', '年龄限制',\n      '只要应届男', '不要外地人'], 'discrimination'),\n]\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    query = str(p.get('in_query') or '')\n    scene = SCENE_ALIAS.get(str(p.get('in_scene') or '').strip(), '简历')\n\n    hit_word = ''\n    reject_type = ''\n    for words, rtype in RISK_WORDS:\n        for w in words:\n            if w in query:\n                hit_word, reject_type = w, rtype\n                break\n        if hit_word:\n            break\n\n    if hit_word:\n        reply = ('这条请求涉及红线内容，我不能做。具体说明见下方的合规替代路径。\\n'\n                 '（判定依据：命中关键词「%s」）') % hit_word\n        reason = '命中红线关键词「%s」' % hit_word\n        v_hit = 'Y'\n    else:\n        reply = ''\n        reason = ''\n        v_hit = 'N'\n\n    ret: Output = {\n        'v_hit': v_hit,\n        'v_reply': reply,\n        'v_reject_type': reject_type,\n        'v_reason': reason,\n        'v_scene': scene,\n        'v_hit_word': hit_word,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_hit",
+          "type": "string"
+        },
+        {
+          "name": "v_reply",
+          "type": "string"
+        },
+        {
+          "name": "v_reject_type",
+          "type": "string"
+        },
+        {
+          "name": "v_reason",
+          "type": "string"
+        },
+        {
+          "name": "v_scene",
+          "type": "string"
+        },
+        {
+          "name": "v_hit_word",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100004",
+      "type": "选择器",
+      "title": "是否命中红线",
+      "description": "选择器只负责「按上游算出来的状态量分流」。实测平台 branches 恒为 1 项；\nfalse 分支由 edges 的 false 端口表达（即未命中红线 → 正常指导）。",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_hit",
+              "right": "Y"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100005",
+      "type": "选择器",
+      "title": "命中类型1：歧视",
+      "description": "选择器只能 2 路，3 类红线拆成两层选择器串联。",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_reject_type",
+              "right": "discrimination"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100007",
+      "type": "选择器",
+      "title": "命中类型2：代写",
+      "description": "false 侧落到「造假话术」，构成完整的 3 类红线兜底。",
+      "branches": [
+        {
+          "logic": 2,
+          "conditions": [
+            {
+              "operator": 1,
+              "type": "string",
+              "left": "100003.v_reject_type",
+              "right": "ghostwriting"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100006",
+      "type": "代码",
+      "title": "拒-歧视话术",
+      "description": "三段式：划界限 + 法律依据 + 合规替代路径。入口有两条：意图 branch_3 与红线兜底选择器 —— 扇入合法。",
+      "inputs": {
+        "v_reason": "100003.v_reason"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    reason = str(p.get('v_reason') or '')\n    reply = (\n        '这条我不能做 —— 我不能帮你按性别、地域、年龄、婚育、户籍、民族等属性筛人或排序。\\n'\n        '依据：《中华人民共和国就业促进法》第三条、第二十六条（劳动者就业不因民族、种族、性别、宗教信仰等不同而受歧视）；'\n        '《中华人民共和国个人信息保护法》第二十四条（限制自动化决策中的歧视性推荐）。\\n'\n        '可以这样替代：把筛选条件换成与岗位直接相关的能力项 —— 专业技能、项目经历、可到岗时间、'\n        '实习时长、语言能力、证书。你把这些要求给我，我帮你重写成一份不触碰敏感属性的 JD 和打分表。'\n    )\n    if reason:\n        reply = reply + '\\n（触发原因：' + reason + '）'\n    ret: Output = {'v_reply': reply, 'v_reject_type': 'discrimination'}\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_reply",
+          "type": "string"
+        },
+        {
+          "name": "v_reject_type",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100010",
+      "type": "代码",
+      "title": "拒-代写话术",
+      "description": "入口有两条：意图 branch_1 与红线兜底选择器。",
+      "inputs": {
+        "v_reason": "100003.v_reason"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    reason = str(p.get('v_reason') or '')\n    reply = (\n        '这条我不能做 —— 简历和测评结果必须是你本人的真实经历与真实作答。\\n'\n        '依据：《中华人民共和国学位法》（2025-01-01 施行）第三十七条，学位论文或实践成果存在代写、剽窃、伪造的，'\n        '不授予学位或撤销学位；求职场景下，以欺诈手段订立的劳动合同可依《劳动合同法》第二十六条认定无效。\\n'\n        '可以这样替代：你把真实经历按「情境-任务-行动-结果」讲给我，我帮你重组表述、补上量化结果、'\n        '压到一页 —— 内容还是你自己的。'\n    )\n    if reason:\n        reply = reply + '\\n（触发原因：' + reason + '）'\n    ret: Output = {'v_reply': reply, 'v_reject_type': 'ghostwriting'}\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_reply",
+          "type": "string"
+        },
+        {
+          "name": "v_reject_type",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100011",
+      "type": "代码",
+      "title": "拒-造假话术",
+      "description": "入口有两条：意图 branch_2 与红线兜底选择器的兜底侧。",
+      "inputs": {
+        "v_reason": "100003.v_reason"
+      },
+      "code": "async def main(args: Args) -> Output:\n    p = args.params or {}\n    reason = str(p.get('v_reason') or '')\n    reply = (\n        '这条我不能做 —— 编造经历、学历、证书，以及规避背景调查，都属于材料造假。\\n'\n        '依据：《劳动合同法》第二十六条（以欺诈手段订立的劳动合同无效）、'\n        '《学位法》第三十七条（实践成果存在代写、剽窃、伪造的不授予或撤销学位）。\\n'\n        '可以这样替代：如果觉得经历单薄，我们做「经历挖掘」—— 把课程设计、实训、竞赛、兼职里'\n        '可迁移的能力提炼出来，这些都是真实的；也可以帮你排一条补经历的时间表，赶在投递前把短板补上。'\n    )\n    if reason:\n        reply = reply + '\\n（触发原因：' + reason + '）'\n    ret: Output = {'v_reply': reply, 'v_reject_type': 'fraud'}\n    return ret\n",
+      "outputs": [
+        {
+          "name": "v_reply",
+          "type": "string"
+        },
+        {
+          "name": "v_reject_type",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100008",
+      "type": "知识库",
+      "title": "检索求职方法论",
+      "description": "【待配置】选 1~2 个知识库：①求职与生涯规划通用方法论 ②简历撰写规范与 STAR 法则。禁放学生简历原件。",
+      "datasets": [],
+      "top_k": 5,
+      "min_score": 0.5,
+      "inputs": {
+        "Query": "100001.in_query"
+      },
+      "outputs": [
+        {
+          "name": "k_method",
+          "type": "list",
+          "items": "string"
+        }
+      ]
+    },
+    {
+      "id": "100009",
+      "type": "大模型",
+      "title": "生成合规指导",
+      "model": "豆包·2.0·pro",
+      "inputs": {
+        "in_query": "100001.in_query",
+        "v_scene": "100003.v_scene",
+        "k_method": "100008.k_method"
+      },
+      "llm_param": {
+        "temperature": 0.5
+      },
+      "prompt": "{{in_query}}",
+      "system_prompt": "你是「就业与生涯规划助手」的求职指导模块，面向学生、就业中心与校友。\n本轮场景：{{v_scene}}\n\n【可参考的通用方法论】\n{{k_method}}\n\n【输出要求】\n1. 结合对方的专业、能力、兴趣与求职目标给建议，不要给「放之四海皆准」的空话。\n2. 推岗位时只使用与岗位直接相关的能力标准（专业技能、项目经历、证书、可到岗时间、实习时长）。\n3. 严禁按性别、地域、年龄、婚育、户籍、民族、宗教信仰等敏感属性做任何区分、排序或推荐。\n4. 若信息不足，先列出还缺哪几项，再给一版「先能做的」建议，不要编造对方的经历。\n5. 不代写简历、不代做测评、不编造数据。\n6. 全文不超过 600 字，分点输出。",
+      "outputs": [
+        {
+          "name": "llm_guide",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "id": "100012",
+      "type": "变量聚合",
+      "title": "结果聚合",
+      "description": "两路收口：\nGroup1 = 回复正文（大模型 / 红线兜底 / 3 类拒绝话术，全是 string）\nGroup2 = 拒绝类型（红线兜底 / 3 类拒绝话术，全是 string）\n★ 组内类型必须一致；主分支（正常指导）排在前面。\n★ 下游统一引用聚合输出，不要直接引用分支内部变量。",
+      "merge_groups": [
+        {
+          "name": "Group1",
+          "variables": [
+            "100009.llm_guide",
+            "100003.v_reply",
+            "100006.v_reply",
+            "100010.v_reply",
+            "100011.v_reply"
+          ]
+        },
+        {
+          "name": "Group2",
+          "variables": [
+            "100003.v_reject_type",
+            "100006.v_reject_type",
+            "100010.v_reject_type",
+            "100011.v_reject_type"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "100014",
+      "type": "代码",
+      "title": "输出契约补全",
+      "description": "★ 唯一的输出契约定义处：把 reject_type 映射成 status / is_violation / intent_name，\n  并算出 week_label（v1/v2 的描述里提到过它，但一直没有节点真的算 —— 这里补上）。\n  结束节点不能做计算，所以必须在这里算完。\n★ 增删意图类别时，这里的 CONTRACT 要同步改。",
+      "inputs": {
+        "v_reply": "100012.Group1",
+        "v_reject_type": "100012.Group2",
+        "in_scene": "100001.in_scene",
+        "in_now_ts": "100001.in_now_ts"
+      },
+      "code": "import datetime\n\nSCENE_ALIAS = {\n    '简历': '简历', '简历优化': '简历', '改简历': '简历',\n    '岗位': '岗位', '岗位匹配': '岗位', '找岗位': '岗位',\n    '面试': '面试', '模拟面试': '面试', '练面试': '面试',\n    '测评': '测评', '职业测评': '测评', '生涯': '测评', '规划': '测评',\n}\n# 唯一的输出契约定义处：reject_type → (状态, 是否违规, 意图名)\nCONTRACT = {\n    '': ('checked', 'N', '正常求职指导'),\n    'ghostwriting': ('blocked', 'Y', '代写简历或代做测评'),\n    'fraud': ('blocked', 'Y', '编造经历学历或伪造材料'),\n    'discrimination': ('blocked', 'Y', '按性别地域等敏感属性筛选候选人'),\n}\n\n\nasync def main(args: Args) -> Output:\n    p = args.params or {}\n    message = str(p.get('v_reply') or '')\n    reject_type = str(p.get('v_reject_type') or '').strip()\n    scene = SCENE_ALIAS.get(str(p.get('in_scene') or '').strip(), '简历')\n\n    status, is_violation, intent_name = CONTRACT.get(\n        reject_type, ('blocked', 'Y', '其它不合规请求'))\n\n    try:\n        now = int(p.get('in_now_ts') or 0)\n    except Exception:\n        now = 0\n    if now <= 0:\n        now = int(datetime.datetime.now().timestamp())\n    iso = datetime.datetime.fromtimestamp(now).isocalendar()\n    week_label = '%d-W%02d' % (int(iso[0]), int(iso[1]))\n\n    if not message:\n        message = ('我暂时没听懂这个请求。可以说得更具体一点吗 —— '\n                   '比如「帮我看看这份简历和这个岗位的匹配度」「排一条到秋招的生涯路径」「练一场模拟面试」。')\n\n    ret: Output = {\n        'out_message': message,\n        'out_status': status,\n        'out_is_violation': is_violation,\n        'out_intent_name': intent_name,\n        'out_reject_type': reject_type,\n        'out_scene': scene,\n        'out_week_label': week_label,\n        'out_now_ts': now,\n    }\n    return ret\n",
+      "outputs": [
+        {
+          "name": "out_message",
+          "type": "string"
+        },
+        {
+          "name": "out_status",
+          "type": "string"
+        },
+        {
+          "name": "out_is_violation",
+          "type": "string"
+        },
+        {
+          "name": "out_intent_name",
+          "type": "string"
+        },
+        {
+          "name": "out_reject_type",
+          "type": "string"
+        },
+        {
+          "name": "out_scene",
+          "type": "string"
+        },
+        {
+          "name": "out_week_label",
+          "type": "string"
+        },
+        {
+          "name": "out_now_ts",
+          "type": "integer"
+        }
+      ]
+    },
+    {
+      "id": "100013",
+      "type": "新增数据",
+      "title": "写服务日志",
+      "description": "【待配置】目标表：career_service_log。字段映射：\nuser_id←in_user_id | scene←100014.out_scene | action←100014.out_intent_name | is_violation←100014.out_is_violation | reject_type←100014.out_reject_type | result_count←0 | reply_text←100014.out_message | week_label←100014.out_week_label | created_at←100014.out_now_ts\n★ 正常与违规两条路径都会走到这里（挂在聚合与契约补全之后），否则算不出拦截率。\n★ 拦截率 = is_violation='Y' 的行数 ÷ 本表总行数，所以业务明细（简历/面试）不要写进这张表。"
+    },
+    {
+      "id": "900001",
+      "type": "结束",
+      "title": "结束",
+      "terminate_plan": "returnVariables",
+      "inputs": {
+        "out_message": "100014.out_message",
+        "out_status": "100014.out_status",
+        "out_intent_name": "100014.out_intent_name",
+        "out_is_violation": "100014.out_is_violation",
+        "out_reject_type": "100014.out_reject_type"
+      }
+    }
+  ],
+  "edges": [
+    [
+      "100001",
+      "100002"
+    ],
+    [
+      "100002",
+      "100003",
+      "branch_0"
+    ],
+    [
+      "100002",
+      "100010",
+      "branch_1"
+    ],
+    [
+      "100002",
+      "100011",
+      "branch_2"
+    ],
+    [
+      "100002",
+      "100006",
+      "branch_3"
+    ],
+    [
+      "100002",
+      "100003",
+      "default"
+    ],
+    [
+      "100003",
+      "100004"
+    ],
+    [
+      "100004",
+      "100005",
+      "true"
+    ],
+    [
+      "100004",
+      "100008",
+      "false"
+    ],
+    [
+      "100005",
+      "100006",
+      "true"
+    ],
+    [
+      "100005",
+      "100007",
+      "false"
+    ],
+    [
+      "100007",
+      "100010",
+      "true"
+    ],
+    [
+      "100007",
+      "100011",
+      "false"
+    ],
+    [
+      "100006",
+      "100012"
+    ],
+    [
+      "100010",
+      "100012"
+    ],
+    [
+      "100011",
+      "100012"
+    ],
+    [
+      "100008",
+      "100009"
+    ],
+    [
+      "100009",
+      "100012"
+    ],
+    [
+      "100012",
+      "100014"
+    ],
+    [
+      "100014",
+      "100013"
+    ],
+    [
+      "100013",
+      "900001"
+    ]
+  ]
+}
