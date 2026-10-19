@@ -8,3 +8,4 @@ Dockerfile text eol=lf
 Dockerfile.dev text eol=lf
 *.exe filter=lfs diff=lfs merge=lfs -text
 /ruanjian/Anaconda/Anaconda3-2026.07-1-Windows-x86_64.exe filter=lfs diff=lfs merge=lfs -text
+*.docx filter=lfs diff=lfs merge=lfs -text
